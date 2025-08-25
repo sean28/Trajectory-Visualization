@@ -1,1 +1,3 @@
-# Trajectory-Visualization
+# Trajectory Visualization Suite
+<div style="text-align: justify"> Trajectory Visualization Suite is a browser-based collection of interactive analysis tools for molecular dynamics (MD) trajectories. It integrates RMSD, RMSF, SASA, Radius of Gyration, clustering, and PCA-based visualizers into a single lightweight interface. Each module provides intuitive plots and options for exploring GROMACS-generated `.xvg` data, helping researchers quickly identify structural trends and extract publication-quality figures. I redeployed this suite in my repository, and you can access it for free by clicking <a href="https://sean28.github.io/Trajectory-Visualization/">here</a>.</div>
+<div style="text-align: justify"> <br> </div>
