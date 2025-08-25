@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SASA-XVG Visualizer</title>
+  <script src="./plotly-latest.min.js"></script>
+  <style>
+    body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:2rem;}
+    .container{max-width:1000px;margin:auto;background:#fff;padding:2rem;border-radius:12px;box-shadow:0 0 10px rgba(0, 0, 0, 0.05);}
+    h2{text-align:center;margin-bottom:1rem;}
+    .form-group{margin-bottom:1rem;}
+    label{display:block;margin-bottom:0.3rem;font-weight:bold;}
+    input[type="text"], select{width:100%;padding:0.5rem;font-size:1rem;}
+    button{padding:0.6rem 1.2rem;font-size:1rem;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;margin-top:0.5rem;}
+    button:hover{background:#0056b3;}
+    #plot{margin-top:2rem;}
+  </style>
+</head>
+
+<body>
+<div class="container">
+  <h2>SASA-XVG Visualizer</h2>
+
+  <div class="form-group">
+    <label>Upload .xvg Files (Multiple Groups):</label>
+    <div id="fileInputs">
+      <div class="file-group" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <label>Group 1:</label>
+        <input type="file" class="xvgFile" accept=".xvg">
+        <label>Line Color:</label>
+        <input type="color" class="colorPicker" value="#1f77b4">
+        <label>Group name:</label>
+        <input type="text" class="groupName" placeholder="Group 1" style="flex:1;">
+        <button onclick="removeGroup(this)" style="padding: 0.2rem 0.5rem;">×</button>
+      </div>
+    </div>
+    <button type="button" onclick="addFileInput()">➕ Add Group</button>
+    <button onclick="drawPlot()">Generate Plot</button>
+  </div>
+
+  <div class="form-group" style="display: flex; gap: 2rem;">
+    <div style="flex: 1;">
+      <label for="xlabel">X-axis Label:</label>
+      <input type="text" id="xlabel" value="Time (ns)">
+    </div>
+    <div style="flex: 1;">
+      <label for="ylabel">Y-axis Label:</label>
+      <input type="text" id="ylabel" value="SASA (nm²)">
+    </div>
+  </div>
+
+  <div class="form-group" style="display: flex; gap: 2rem;">
+    <div style="flex: 1;">
+      <label for="tickX">X-axis Tick Spacing:</label>
+      <input type="text" id="tickX" value="10">
+    </div>
+    <div style="flex: 1;">
+      <label for="tickY">Y-axis Tick Spacing:</label>
+      <input type="text" id="tickY" value="10">
+    </div>
+  </div>
+
+  <div class="form-group" style="display: flex; gap: 2rem;">
+    <div style="flex: 1;">
+      <label for="xrange">X-axis Range (min,max) [optional]:</label>
+      <input type="text" id="xrange" placeholder="e.g. 0,100">
+    </div>
+    <div style="flex: 1;">
+      <label for="yrange">Y-axis Range (min,max) [optional]:</label>
+      <input type="text" id="yrange" placeholder="e.g. 0,50">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="figSize">Figure Size (width,height):</label>
+    <input type="text" id="figSize" value="1000,350">
+  </div>
+
+  <div class="form-group" style="display: flex; gap: 5rem; align-items: center;">
+    <div style="display:inline-flex; align-items:center; gap:4px;">
+      <label for="lineWidth">Line Width:</label>
+      <input type="number" id="lineWidth" value="2" step="0.5">
+    </div>
+    <div style="display:inline-flex; align-items:center; gap:4px;">
+      <label for="unitSelector">Y Unit:</label>
+      <select id="unitSelector" onchange="switchUnit()" style="width:70px;">
+        <option value="nm²" selected>nm²</option>
+        <option value="Å²">Å²</option>
+      </select>
+    </div>
+    <div style="flex: 1;">
+      <label><input type="checkbox" id="showMarkers"> Show Markers</label>
+    </div>
+  
+    <div style="display:inline-flex; align-items:center; gap:10px;">
+      <label><input type="checkbox" id="enableSmooth"> Smooth </label>
+      <input type="number" id="smoothWin" value="5" min="2" step="1" style="width:60px;">
+    </div>
+  </div>
+
+  <div id="plot"></div>
+
+  <div class="form-group">
+    <label>SASA Statistics:</label>
+    <div id="statsOutput" style="font-family: monospace; background: #f0f0f0; padding: 1rem; border-radius: 8px;"></div>
+  </div>
+</div>
+
+<script>
+  let groupCount = 1;
+  let currentUnit = "nm²";
+  const colorPalette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"];
+
+  function addFileInput() {
+    groupCount++;
+    const container = document.getElementById("fileInputs");
+    const div = document.createElement("div");
+    div.className = "file-group";
+    div.style = "display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;";
+    const defaultColor = colorPalette[(groupCount - 1) % colorPalette.length];
+    div.innerHTML = `
+      <label>Group ${groupCount}:</label>
+      <input type="file" class="xvgFile" accept=".xvg">
+      <label>Line Color:</label>
+      <input type="color" class="colorPicker" value="${defaultColor}">
+      <label>Group name:</label>
+      <input type="text" class="groupName" placeholder="Group ${groupCount}" style="flex:1;">
+      <button onclick="removeGroup(this)" style="padding: 0.2rem 0.5rem;">×</button>
+    `;
+    container.appendChild(div);
+  }
+
+  function removeGroup(btn) {
+    btn.parentNode.remove();
+    resetGroupLabels();
+  }
+
+  function resetGroupLabels() {
+    const groups = document.querySelectorAll(".file-group");
+    groupCount = 0;
+    groups.forEach((group, idx) => {
+      const label = group.querySelector("label");
+      const nameInput = group.querySelector(".groupName");
+      const colorInput = group.querySelector(".colorPicker");
+      groupCount = idx + 1;
+      label.textContent = `Group ${groupCount}:`;
+      nameInput.placeholder = `Group ${groupCount}`;
+      if (!nameInput.value) nameInput.value = `Group ${groupCount}`;
+      colorInput.value = colorPalette[idx % colorPalette.length];
+    });
+  }
+
+  function switchUnit() {
+    const selected = document.getElementById("unitSelector").value;
+    currentUnit = selected;
+    drawPlot();
+  }
+
+  function parseXVG(file, callback) {
+    const reader = new FileReader();
+    reader.onload = function () {
+      const lines = reader.result.split("\n");
+      const data = [];
+      for (let line of lines) {
+        if (line.startsWith("@") || line.startsWith("#") || line.trim() === "") continue;
+        const [x, y] = line.trim().split(/\s+/).map(Number);
+        if (!isNaN(x) && !isNaN(y)) data.push([x, y]);
+      }
+      callback(data);
+    };
+    reader.readAsText(file);
+  }
+
+  // ✅ 新增：移动平均平滑（仅用于显示）
+  function movingAverage(arr, win){
+    if (!Array.isArray(arr) || arr.length === 0 || win <= 1) return arr.slice();
+    const out = [];
+    let sum = 0;
+    for (let i = 0; i < arr.length; i++) {
+      sum += arr[i];
+      if (i >= win) sum -= arr[i - win];
+      out.push(i >= win - 1 ? sum / win : arr[i]); // 前 win-1 个点保留原值
+    }
+    return out;
+  }
+
+  function drawPlot() {
+    window.sasaStats = [];
+    document.getElementById("statsOutput").innerHTML = "";
+
+    const xLabel = document.getElementById("xlabel").value;
+    let yLabel = document.getElementById("ylabel").value;
+
+    // 自动更新单位后缀
+    if (currentUnit === "Å²" && yLabel.includes("nm²")) {
+      yLabel = yLabel.replace("nm²", "Å²");
+      document.getElementById("ylabel").value = yLabel;
+    } else if (currentUnit === "nm²" && yLabel.includes("Å²")) {
+      yLabel = yLabel.replace("Å²", "nm²");
+      document.getElementById("ylabel").value = yLabel;
+    }
+
+    const showMarkers = document.getElementById("showMarkers").checked;
+    const lineWidth = parseFloat(document.getElementById("lineWidth").value);
+    const tickX = parseFloat(document.getElementById("tickX").value);
+    const tickY = parseFloat(document.getElementById("tickY").value);
+    const [figW, figH] = document.getElementById("figSize").value.split(",").map(Number);
+    const xrange = document.getElementById("xrange").value.split(",").map(Number);
+    const yrange = document.getElementById("yrange").value.split(",").map(Number);
+
+    // ✅ 新增：读取平滑设置
+    const enableSmooth = document.getElementById("enableSmooth").checked;
+    const smoothWin = parseInt(document.getElementById("smoothWin").value || "5");
+
+    const files = document.querySelectorAll(".xvgFile");
+    const colors = document.querySelectorAll(".colorPicker");
+    const names = document.querySelectorAll(".groupName");
+
+    const traces = [];
+    let completed = 0;
+
+    files.forEach((input, idx) => {
+      const file = input.files[0];
+      if (!file) return;
+
+      parseXVG(file, (data) => {
+        const x = data.map(p => p[0]);
+        const yRaw = data.map(p => p[1] * (currentUnit === "Å²" ? 100 : 1)); // 原始（用于统计）
+        const yPlot = enableSmooth ? movingAverage(yRaw, Math.max(2, smoothWin)) : yRaw; // 仅用于绘图
+
+        const mean = yRaw.reduce((a, b) => a + b, 0) / yRaw.length;
+        const sd = Math.sqrt(yRaw.reduce((a, b) => a + (b - mean) ** 2, 0) / yRaw.length);
+        const min = Math.min(...yRaw);
+        const max = Math.max(...yRaw);
+
+        window.sasaStats.push({
+          name: names[idx].value || `Group ${idx + 1}`,
+          mean: mean.toFixed(4),
+          sd: sd.toFixed(4),
+          min: min.toFixed(4),
+          max: max.toFixed(4)
+        });
+
+        traces.push({
+          x, y: yPlot,
+          type: "scatter",
+          mode: showMarkers ? "lines+markers" : "lines",
+          name: names[idx].value || `Group ${idx + 1}`,
+          line: { color: colors[idx].value, width: lineWidth }
+        });
+
+        completed++;
+        if (completed === files.length) {
+          const statsDiv = document.getElementById("statsOutput");
+          statsDiv.innerHTML = window.sasaStats.map(stat =>
+            `<b>${stat.name}:</b> Mean: ${stat.mean} ${currentUnit}, SD: ${stat.sd} ${currentUnit}, Min: ${stat.min} ${currentUnit}, Max: ${stat.max} ${currentUnit}`
+          ).join("<br>");
+
+          Plotly.newPlot("plot", traces, {
+            width: figW, height: figH,
+            xaxis: {
+              title: xLabel,
+              dtick: tickX,
+              showline: true,
+              mirror: true,
+              linecolor: '#e0e0e0',
+              linewidth: 1,
+              zeroline: true,
+              zerolinecolor: "#eee",
+              range: xrange.length === 2 && !isNaN(xrange[0]) && !isNaN(xrange[1]) ? xrange : undefined
+            },
+            yaxis: {
+              title: yLabel,
+              dtick: tickY,
+              showline: true,
+              mirror: true,
+              linecolor: '#e0e0e0',
+              linewidth: 1,
+              zeroline: true,
+              zerolinecolor: "#eee",
+              range: yrange.length === 2 ? yrange : undefined
+            },
+            margin: { t: 30 },
+            plot_bgcolor: "#fff",
+            paper_bgcolor: "#fff"
+          });
+        }
+      });
+    });
+  }
+</script>
+</body>
+</html>

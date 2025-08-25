@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Rg-XVG Visualizer</title>
+  <script src="./plotly-latest.min.js"></script>
+  <style>
+    body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:2rem;}
+    .container{max-width:1100px;margin:auto;background:#fff;padding:2rem;border-radius:12px;box-shadow:0 0 10px rgba(0,0,0,.05);}
+    h2{text-align:center;margin-bottom:1rem;}
+    .form-group{margin-bottom:1rem;}
+    label{display:block;margin-bottom:.3rem;font-weight:bold;}
+    
+    button{padding:.6rem 1.2rem;font-size:1rem;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;}
+    button:hover{background:#0056b3;}
+    .row{display:flex;gap:1rem;flex-wrap:wrap;}
+    .col{flex:1;min-width:220px}
+    .file-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;}
+    #plot{margin-top:1rem;}
+    #statsOutput{font-family:monospace;background:#f7f7f7;padding:1rem;border-radius:8px;white-space:pre-wrap}
+    .pill{background:#f1f3f5;border-radius:999px;padding:.2rem .6rem;font-size:.9rem}
+    input[type="text"]{padding:5px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;outline:none;transition:all 0.2s ease;}
+    input[type="text"]:focus{border-color:#007bff;}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>Rg-XVG Visualizer</h2>
+
+ 
+
+  <div class="form-group">
+    <label>Upload .xvg Files (Multiple Groups):</label>
+    <div id="fileInputs">
+      <div class="file-row">
+        <span class="pill">Group 1</span>
+        <input type="file" class="xvgFile" accept=".xvg">
+        <input type="color" class="colorPicker" value="#1f77b4" title="Line color">
+        <input type="text" class="groupName" placeholder="Group 1" style="flex:1;">
+        <button onclick="removeGroup(this)" title="Remove">×</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col"><button type="button" onclick="addFileInput()">➕ Add Group</button></div>
+      <div class="col"><button onclick="drawPlot()">Generate Plot</button></div>
+      <div class="col"><button onclick="downloadPNG()">Download PNG</button></div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>Time unit in file</label>
+        <select id="timeUnitFile" onchange="drawPlot()">
+          <option value="ns" selected>ns</option>
+          <option value="ps">ps</option>
+          <option value="fs">fs</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>Display time unit</label>
+        <select id="timeUnitDisplay" onchange="drawPlot()">
+          <option value="ns" selected>ns</option>
+          <option value="ps">ps</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>Rg unit in file</label>
+        <select id="yUnitFile" onchange="drawPlot()">
+          <option value="nm" selected>nm (GROMACS default)</option>
+          <option value="Å">Å</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>Display Rg unit</label>
+        <select id="yUnitDisplay" onchange="drawPlot()">
+          <option value="nm" selected>nm</option>
+          <option value="Å">Å</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>X-axis Label</label>
+        <input type="text" id="xlabel" value="Time (ns)">
+      </div>
+      <div class="col">
+        <label>Y-axis Label</label>
+        <input type="text" id="ylabel" value="Rg (nm)">
+      </div>
+      <div class="col">
+        <label>Figure Size (w,h)</label>
+        <input type="text" id="figSize" value="1100,380">
+      </div>
+      <div class="col">
+        <label>Line Width</label>
+        <input type="number" id="lineWidth" value="2" step="0.5" min="0.5">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>X tick</label>
+        <input type="text" id="tickX" value="10">
+      </div>
+      <div class="col">
+        <label>Y tick</label>
+        <input type="text" id="tickY" value="0.02">
+      </div>
+      <div class="col">
+        <label>X range (min,max)</label>
+        <input type="text" id="xrange" placeholder="e.g. 0,100">
+      </div>
+      <div class="col">
+        <label>Y range (min,max)</label>
+        <input type="text" id="yrange" placeholder="e.g. 0.8,1.2">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label><input type="checkbox" id="showMarkers"> Show markers</label>
+      </div>
+      <div class="col">
+        <label><input type="checkbox" id="showMean"> Show mean line</label>
+      </div>
+      <div class="col">
+        <label><input type="checkbox" id="enableSmooth"> Smooth (moving average)</label>
+      </div>
+      <div class="col">
+        <label>Smooth window (points)</label>
+        <input type="number" id="smoothWin" value="5" min="2" step="1">
+      </div>
+    </div>
+  </div>
+
+  <div id="plot"></div>
+
+  <div class="form-group">
+    <label>Rg Statistics (per group):</label>
+    <div id="statsOutput"></div>
+  </div>
+</div>
+
+<script>
+  let groupCount = 1;
+  const palette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+
+  function addFileInput(){
+    groupCount++;
+    const container = document.getElementById("fileInputs");
+    const div = document.createElement("div");
+    div.className = "file-row";
+    div.innerHTML = `
+      <span class="pill">Group ${groupCount}</span>
+      <input type="file" class="xvgFile" accept=".xvg">
+      <input type="color" class="colorPicker" value="${palette[(groupCount-1)%palette.length]}" title="Line color">
+      <input type="text" class="groupName" placeholder="Group ${groupCount}" style="flex:1;">
+      <button onclick="removeGroup(this)" title="Remove">×</button>
+    `;
+    container.appendChild(div);
+  }
+
+  function removeGroup(btn){
+    btn.parentNode.remove();
+    resetGroupLabels();
+  }
+
+  function resetGroupLabels(){
+    const rows = document.querySelectorAll(".file-row .pill");
+    rows.forEach((el, i)=> el.textContent = `Group ${i+1}`);
+    groupCount = rows.length;
+  }
+
+  function parseXVG(file, cb){
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const lines = reader.result.split("\n");
+      const data = [];
+      for(const line of lines){
+        if(line.startsWith("@") || line.startsWith("#") || line.trim()==="") continue;
+        const [x,y] = line.trim().split(/\s+/).map(Number);
+        if(!isNaN(x) && !isNaN(y)) data.push([x,y]);
+      }
+      cb(data);
+    };
+    reader.readAsText(file);
+  }
+
+  // time conversion: to ns then to target
+  function convertTime(val, fromUnit, toUnit){
+    const toNs = { fs: 1e-6, ps: 1e-3, ns: 1 };
+    let vNs = val * toNs[fromUnit];
+    if(toUnit === "ns") return vNs;
+    if(toUnit === "ps") return vNs * 1000;
+    return vNs; // default ns
+  }
+
+  // length conversion between nm & Å
+  function convertLength(val, fromUnit, toUnit){
+    const toNm = { "nm":1, "Å":0.1 };
+    let vNm = val * toNm[fromUnit];
+    if(toUnit === "nm") return vNm;
+    if(toUnit === "Å") return vNm * 10;
+    return vNm;
+  }
+
+  function movingAverage(arr, win){
+    if(win<=1) return arr.slice();
+    const out = [];
+    let sum = 0;
+    for(let i=0;i<arr.length;i++){
+      sum += arr[i];
+      if(i>=win) sum -= arr[i-win];
+      out.push(i>=win-1 ? sum/win : arr[i]);
+    }
+    return out;
+  }
+
+  function drawPlot(){
+    // clear stats
+    const statsDiv = document.getElementById("statsOutput");
+    statsDiv.innerHTML = "";
+
+    const timeUnitFile = document.getElementById("timeUnitFile").value;
+    const timeUnitDisplay = document.getElementById("timeUnitDisplay").value;
+    const yUnitFile = document.getElementById("yUnitFile").value;
+    const yUnitDisplay = document.getElementById("yUnitDisplay").value;
+
+    const xlabelInput = document.getElementById("xlabel");
+    const ylabelInput = document.getElementById("ylabel");
+
+    // auto label sync (optional)
+    xlabelInput.value = `Time (${timeUnitDisplay})`;
+    ylabelInput.value = `Rg (${yUnitDisplay})`;
+
+    const showMarkers = document.getElementById("showMarkers").checked;
+    const showMean = document.getElementById("showMean").checked;
+    const enableSmooth = document.getElementById("enableSmooth").checked;
+    const smoothWin = parseInt(document.getElementById("smoothWin").value || "5");
+
+    const lineWidth = parseFloat(document.getElementById("lineWidth").value);
+    const tickX = parseFloat(document.getElementById("tickX").value);
+    const tickY = parseFloat(document.getElementById("tickY").value);
+    const [figW, figH] = document.getElementById("figSize").value.split(",").map(Number);
+    const xrange = document.getElementById("xrange").value.split(",").map(Number);
+    const yrange = document.getElementById("yrange").value.split(",").map(Number);
+
+    const files = document.querySelectorAll(".xvgFile");
+    const colors = document.querySelectorAll(".colorPicker");
+    const names = document.querySelectorAll(".groupName");
+
+    const traces = [];
+    const statRows = [];
+    let completed = 0, groupsToDo = 0;
+
+    files.forEach((input)=>{ if(input.files[0]) groupsToDo++; });
+    if(groupsToDo===0){
+      Plotly.purge("plot");
+      return;
+    }
+
+    files.forEach((input, idx)=>{
+      const file = input.files[0];
+      if(!file) return;
+
+      parseXVG(file, (raw)=>{
+        const x = raw.map(p => convertTime(p[0], timeUnitFile, timeUnitDisplay));
+        let y = raw.map(p => convertLength(p[1], yUnitFile, yUnitDisplay));
+        if(enableSmooth) y = movingAverage(y, smoothWin);
+
+        const mean = y.reduce((a,b)=>a+b,0) / y.length;
+        const sd = Math.sqrt(y.reduce((a,b)=> a + (b-mean)*(b-mean), 0) / y.length);
+        const min = Math.min(...y);
+        const max = Math.max(...y);
+
+        const name = names[idx].value || `Group ${idx+1}`;
+
+        traces.push({
+          x, y,
+          type:"scatter",
+          mode: showMarkers ? "lines+markers" : "lines",
+          name,
+          line:{ color: colors[idx].value, width: lineWidth }
+        });
+
+        if(showMean){
+          traces.push({
+            x:[x[0], x[x.length-1]],
+            y:[mean, mean],
+            type:"scatter",
+            mode:"lines",
+            name:`${name} mean`,
+            line:{ color: colors[idx].value, width: 1, dash:"dash" },
+            showlegend:false
+          });
+        }
+
+        statRows.push(
+          `${name}:  Mean=${mean.toFixed(4)} ${yUnitDisplay}, SD=${sd.toFixed(4)} ${yUnitDisplay}, Min=${min.toFixed(4)} ${yUnitDisplay}, Max=${max.toFixed(4)} ${yUnitDisplay}`
+        );
+
+        completed++;
+        if(completed===groupsToDo){
+          statsDiv.textContent = statRows.join("\n");
+
+          Plotly.newPlot("plot", traces, {
+            width: figW, height: figH,
+            xaxis:{
+              title: xlabelInput.value,
+              dtick: tickX,
+              range: (xrange.length===2 && !isNaN(xrange[0]) && !isNaN(xrange[1])) ? xrange : undefined,
+              showline:true, mirror:true, linecolor:'#e0e0e0', linewidth:1, zeroline:true, zerolinecolor:'#eee'
+            },
+            yaxis:{
+              title: ylabelInput.value,
+              dtick: tickY,
+              range: (yrange.length===2 && !isNaN(yrange[0]) && !isNaN(yrange[1])) ? yrange : undefined,
+              showline:true, mirror:true, linecolor:'#e0e0e0', linewidth:1, zeroline:true, zerolinecolor:'#eee'
+            },
+            margin:{ t:30 },
+            plot_bgcolor:"#fff",
+            paper_bgcolor:"#fff"
+          });
+        }
+      });
+    });
+  }
+
+  function downloadPNG(){
+    const gd = document.getElementById("plot");
+    Plotly.downloadImage(gd, {format:'png', filename:'rg_plot', width: gd.layout.width || 1100, height: gd.layout.height || 380});
+  }
+</script>
+</body>
+</html>

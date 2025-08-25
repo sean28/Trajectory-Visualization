@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cluster-XVG/XPM Visualizer</title>
+  <script src="./plotly-latest.min.js"></script>
+  <style>
+    body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:2rem;}
+    .container{max-width:1100px;margin:auto;background:#fff;padding:2rem;border-radius:12px;box-shadow:0 0 10px rgba(0,0,0,.05);}
+    h2{text-align:center;margin-bottom:1rem;}
+    h3{margin:1.2rem 0 .6rem;}
+    .form-group{margin-bottom:1rem;}
+    label{display:block;margin-bottom:.3rem;font-weight:bold;}
+    input[type="text"]{padding:5px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;outline:none;transition:all 0.2s ease;}
+    input[type="text"]:focus{border-color:#007bff;}
+    button{padding:.6rem 1.2rem;font-size:1rem;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;}
+    button:hover{background:#0056b3;}
+    .row{display:flex;gap:1rem;flex-wrap:wrap;}
+    .col{flex:1;min-width:220px}
+    .file-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;}
+    .pill{background:#f1f3f5;border-radius:999px;padding:.2rem .6rem;font-size:.9rem}
+    #plotDistrib,#plotSize,#plotXPM{margin-top:1rem;}
+    #statsDistrib,#statsSize{font-family:monospace;background:#f7f7f7;padding:1rem;border-radius:8px;white-space:pre-wrap}
+    .inline-field{display:inline-flex; align-items:center; gap:8px; height:28px;}
+    .inline-field > label{margin:0; line-height:28px;}
+    .inline-field > input[type="number"]{height:100%; box-sizing:border-box; width:90px;}
+    .toolbar{display:flex;gap:.8rem;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>Cluster-XVG/XPM Visualizer</h2>
+
+  <!-- ========== RMSD Distribution (XVG) ========== -->
+  <h3>RMSD Distribution (.xvg)</h3>
+  <div class="form-group">
+    <label>Upload .xvg Files (Multiple Groups):</label>
+    <div id="fileDistrib">
+      <div class="file-row">
+        <span class="pill">Group 1</span>
+        <input type="file" class="xvgDistrib" accept=".xvg">
+        <input type="color" class="colorDistrib" value="#1f77b4" title="Color">
+        <input type="text" class="nameDistrib" placeholder="Group 1" style="flex:1;">
+        <button onclick="removeRow(this)" title="Remove">×</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button type="button" onclick="addDistrib()">➕ Add Group</button>
+      <button onclick="drawDistrib()">Plot Distribution</button>
+      <button onclick="downloadPNG('plotDistrib','rmsd_distribution')">Download PNG</button>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>X-axis Label</label>
+        <input type="text" id="xlabelDistrib" value="RMSD (nm)">
+      </div>
+      <div class="col">
+        <label>Y-axis Label</label>
+        <input type="text" id="ylabelDistrib" value="Count">
+      </div>
+      <div class="col">
+        <label>Axis Ticks</label>
+        <div class="inline-field">
+          <label for="distribXTick">X Tick</label>
+          <input type="number" id="distribXTick" placeholder="auto" step="0.01">
+          <label for="distribYTick">Y Tick</label>
+          <input type="number" id="distribYTick" placeholder="auto" step="0.01">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="plotDistrib"></div>
+  <div class="form-group">
+    <label>Distribution Stats (per group):</label>
+    <div id="statsDistrib"></div>
+  </div>
+
+  <hr>
+
+  <!-- ========== Cluster Size (XVG) ========== -->
+  <h3>Cluster Size (.xvg)</h3>
+  <div class="form-group">
+    <label>Upload .xvg Files (Multiple Groups):</label>
+    <div id="fileSize">
+      <div class="file-row">
+        <span class="pill">Group 1</span>
+        <input type="file" class="xvgSize" accept=".xvg">
+        <input type="color" class="colorSize" value="#ff7f0e" title="Color">
+        <input type="text" class="nameSize" placeholder="Group 1" style="flex:1;">
+        <button onclick="removeRow(this)" title="Remove">×</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button type="button" onclick="addSize()">➕ Add Group</button>
+      <button onclick="drawSize()">Plot Cluster Size</button>
+      <button onclick="downloadPNG('plotSize','cluster_size')">Download PNG</button>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>X-axis Label</label>
+        <input type="text" id="xlabelSize" value="Cluster index">
+      </div>
+      <div class="col">
+        <label>Y-axis Label</label>
+        <input type="text" id="ylabelSize" value="Size (frames)">
+      </div>
+      <div class="col">
+        <label>Axis Ticks</label>
+        <div class="inline-field">
+          <label for="sizeXTick">X Tick</label>
+          <input type="number" id="sizeXTick" placeholder="auto" step="1">
+          <label for="sizeYTick">Y Tick</label>
+          <input type="number" id="sizeYTick" placeholder="auto" step="1">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="plotSize"></div>
+  <div class="form-group">
+    <label>Cluster Size Stats (per group):</label>
+    <div id="statsSize"></div>
+  </div>
+
+  <hr>
+
+  <!-- ========== RMSD Matrix (XPM) ========== -->
+  <h3>RMSD Matrix (.xpm)</h3>
+  <div class="form-group">
+    <div class="file-row">
+      <span class="pill">Matrix</span>
+      <input type="file" id="xpmFile" accept=".xpm">
+      <button onclick="drawXPM()">Plot XPM</button>
+      <button onclick="downloadPNG('plotXPM','rmsd_matrix')">Download PNG</button>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <div class="inline-field">
+          <label for="dtVal">Frame Δt:</label>
+          <input type="number" id="dtVal" value="0.1" step="0.01" style="width:90px;">
+          <select id="dtUnit">
+            <option value="ns" selected>ns</option>
+            <option value="ps">ps</option>
+          </select>
+        </div>
+      </div>
+      <div class="col">
+        <div class="inline-field">
+          <label for="timeUnitDisp">Display time:</label>
+          <select id="timeUnitDisp">
+            <option value="ns" selected>ns</option>
+            <option value="ps">ps</option>
+          </select>
+        </div>
+      </div>
+      <div class="col">
+        <div class="inline-field">
+          <label for="downsample">Downsample:</label>
+          <input type="number" id="downsample" value="1" min="1" step="1" style="width:70px;">
+        </div>
+      </div>
+      <div class="col">
+        <div class="inline-field">
+          <label for="revY">Reverse Y:</label>
+          <input type="checkbox" id="revY">
+        </div>
+      </div>
+      <div class="col">
+        <div class="inline-field">
+          <label for="symmetrize">Symmetrize:</label>
+          <input type="checkbox" id="symmetrize">
+        </div>
+      </div>
+      <div class="col">
+        <div class="inline-field">
+          <label for="xpmCmap">Colormap:</label>
+          <select id="xpmCmap">
+            <option value="xpm" selected>From XPM</option>
+            <option value="Viridis">Viridis</option>
+            <option value="Turbo">Turbo</option>
+            <option value="Jet">Jet</option>
+          </select>
+        </div>
+      </div>
+      <!-- ⭐ 新增：XY 手动范围（用显示单位） -->
+      <div class="col">
+        <label>Axis Range (display unit)</label>
+        <div class="inline-field" style="gap:6px;">
+          <label for="xpmXRange">X:</label>
+          <input type="text" id="xpmXRange" placeholder="min,max 或留空" style="width:140px;">
+        </div>
+        <div class="inline-field" style="gap:6px; margin-top:6px;">
+          <label for="xpmYRange">Y:</label>
+          <input type="text" id="xpmYRange" placeholder="min,max 或留空" style="width:140px;">
+        </div>
+      </div>
+      <!-- ⭐ 结束 -->
+    </div>
+  </div>
+
+  <div id="plotXPM"></div>
+</div>
+
+<script>
+  // ---------- Helpers ----------
+  function removeRow(btn){ btn.parentNode.remove(); refreshPills(); }
+  function refreshPills(){
+    document.querySelectorAll('#fileDistrib .file-row .pill').forEach((el,i)=>el.textContent=`Group ${i+1}`);
+    document.querySelectorAll('#fileSize .file-row .pill').forEach((el,i)=>el.textContent=`Group ${i+1}`);
+  }
+  function addDistrib(){
+    const c = document.getElementById('fileDistrib');
+    const div = document.createElement('div');
+    div.className='file-row';
+    div.innerHTML = `
+      <span class="pill">Group ${c.children.length+1}</span>
+      <input type="file" class="xvgDistrib" accept=".xvg">
+      <input type="color" class="colorDistrib" value="#1f77b4" title="Color">
+      <input type="text" class="nameDistrib" placeholder="Group ${c.children.length+1}" style="flex:1;">
+      <button onclick="removeRow(this)" title="Remove">×</button>`;
+    c.appendChild(div);
+  }
+  function addSize(){
+    const c = document.getElementById('fileSize');
+    const div = document.createElement('div');
+    div.className='file-row';
+    div.innerHTML = `
+      <span class="pill">Group ${c.children.length+1}</span>
+      <input type="file" class="xvgSize" accept=".xvg">
+      <input type="color" class="colorSize" value="#ff7f0e" title="Color">
+      <input type="text" class="nameSize" placeholder="Group ${c.children.length+1}" style="flex:1;">
+      <button onclick="removeRow(this)" title="Remove">×</button>`;
+    c.appendChild(div);
+  }
+
+  function parseXVG(file, cb){
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const lines = reader.result.split(/\r?\n/);
+      const data = [];
+      for(const line of lines){
+        if(line.startsWith('@') || line.startsWith('#') || line.trim()==='') continue;
+        const parts = line.trim().split(/\s+/).map(Number);
+        if(parts.length>=2 && !parts.some(v=>Number.isNaN(v))) data.push(parts.slice(0,2));
+      }
+      cb(data);
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- RMSD Distribution (bar only) ----------
+  function drawDistrib(){
+    const files = document.querySelectorAll('.xvgDistrib');
+    const colors = document.querySelectorAll('.colorDistrib');
+    const names  = document.querySelectorAll('.nameDistrib');
+    const xlabel = document.getElementById('xlabelDistrib').value;
+    const ylabel = document.getElementById('ylabelDistrib').value;
+
+    const xTickVal = parseFloat(document.getElementById('distribXTick').value);
+    const yTickVal = parseFloat(document.getElementById('distribYTick').value);
+    const xdtick = Number.isNaN(xTickVal) ? undefined : xTickVal;
+    const ydtick = Number.isNaN(yTickVal) ? undefined : yTickVal;
+
+    const traces = [];
+    const stats = [];
+    let done=0, total=0;
+    files.forEach(f=>{ if(f.files[0]) total++; });
+    if(total===0){ Plotly.purge('plotDistrib'); document.getElementById('statsDistrib').textContent=''; return; }
+
+    files.forEach((input, i)=>{
+      const file = input.files[0]; if(!file) return;
+      parseXVG(file, (arr)=>{
+        const x = arr.map(r=>r[0]);
+        const y = arr.map(r=>r[1]);
+        const sumN = y.reduce((a,b)=>a+b,0);
+        const mean = x.reduce((a,xi,idx)=>a+xi*y[idx],0)/sumN;
+        const sd = Math.sqrt(x.reduce((a,xi,idx)=>a+(xi-mean)*(xi-mean)*y[idx],0)/sumN);
+        const min = x[0], max = x[x.length-1];
+
+        traces.push({ x, y, type:'bar', name: names[i].value || `Group ${i+1}`, marker:{ color: colors[i].value } });
+        stats.push(`${names[i].value || `Group ${i+1}`}: Mean=${mean.toFixed(4)} nm, SD=${sd.toFixed(4)} nm, Range=[${min.toFixed(4)}, ${max.toFixed(4)}] nm`);
+        done++;
+        if(done===total){
+          Plotly.newPlot('plotDistrib', [{
+            ...traces[0]
+          }, ...traces.slice(1)], {
+            xaxis:{title:xlabel, dtick:xdtick, showline:true, mirror:true, linecolor:'#e0e0e0'},
+            yaxis:{title:ylabel, dtick:ydtick, showline:true, mirror:true, linecolor:'#e0e0e0'},
+            barmode:'group',
+            margin:{t:30}, plot_bgcolor:'#fff', paper_bgcolor:'#fff'
+          });
+          document.getElementById('statsDistrib').textContent = stats.join('\n');
+        }
+      });
+    });
+  }
+
+  // ---------- Cluster Size (bar only) ----------
+  function drawSize(){
+    const files = document.querySelectorAll('.xvgSize');
+    const colors = document.querySelectorAll('.colorSize');
+    const names  = document.querySelectorAll('.nameSize');
+    const xlabel = document.getElementById('xlabelSize').value;
+    const ylabel = document.getElementById('ylabelSize').value;
+
+    const xTickVal = parseFloat(document.getElementById('sizeXTick').value);
+    const yTickVal = parseFloat(document.getElementById('sizeYTick').value);
+    const xdtick = Number.isNaN(xTickVal) ? undefined : xTickVal;
+    const ydtick = Number.isNaN(yTickVal) ? undefined : yTickVal;
+
+    const traces = [];
+    const stats = [];
+    let done=0, total=0;
+    files.forEach(f=>{ if(f.files[0]) total++; });
+    if(total===0){ Plotly.purge('plotSize'); document.getElementById('statsSize').textContent=''; return; }
+
+    files.forEach((input, i)=>{
+      const file = input.files[0]; if(!file) return;
+      parseXVG(file, (arr)=>{
+        const x = arr.map(r=>r[0]);
+        const y = arr.map(r=>r[1]);
+        const name = names[i].value || `Group ${i+1}`;
+
+        const mean = y.reduce((a,b)=>a+b,0)/y.length;
+        const sd = Math.sqrt(y.reduce((a,b)=>a+(b-mean)*(b-mean),0)/y.length);
+        const min = Math.min(...y), max = Math.max(...y);
+
+        traces.push({ x, y, type:'bar', name, marker:{ color: colors[i].value } });
+        stats.push(`${name}: Mean=${mean.toFixed(3)}, SD=${sd.toFixed(3)}, Min=${min.toFixed(3)}, Max=${max.toFixed(3)}`);
+        done++;
+        if(done===total){
+          Plotly.newPlot('plotSize', [{
+            ...traces[0]
+          }, ...traces.slice(1)], {
+            xaxis:{title:xlabel, dtick:xdtick, showline:true, mirror:true, linecolor:'#e0e0e0'},
+            yaxis:{title:ylabel, dtick:ydtick, showline:true, mirror:true, linecolor:'#e0e0e0'},
+            barmode:'group',
+            margin:{t:30}, plot_bgcolor:'#fff', paper_bgcolor:'#fff'
+          });
+          document.getElementById('statsSize').textContent = stats.join('\n');
+        }
+      });
+    });
+  }
+
+  // ---------- XPM parsing & plotting ----------
+  function parseXPM(file, cb){
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const lines = reader.result.split(/\r?\n/).map(l=>l.trim());
+      const headerIdx = lines.findIndex(l=>/^"\d+\s+\d+\s+\d+\s+\d+"/.test(l));
+      if(headerIdx<0){ alert('XPM header not found'); return; }
+      const header = lines[headerIdx].replace(/(^"|",?$)/g,'').trim();
+      const [w,h,nc,cpp] = header.split(/\s+/).map(Number);
+
+      const palette = [];
+      const key2index = new Map();
+      const noneKeys = new Set();
+
+      for(let i=0;i<nc;i++){
+        const line = lines[headerIdx+1+i].replace(/^"/,'').replace(/",?$/,'');
+        const key = line.slice(0,cpp);
+        const isNone = /\bc\s+None\b/i.test(line);
+        if(isNone){ noneKeys.add(key); key2index.set(key,i); palette.push(null); continue; }
+        const hexMatch = line.match(/#[0-9A-Fa-f]{6}/);
+        const color = hexMatch ? hexMatch[0] : '#000000';
+        key2index.set(key, i); palette.push(color);
+      }
+
+      const z = new Array(h);
+      for(let r=0;r<h;r++){
+        const line = lines[headerIdx+1+nc+r].replace(/^"/,'').replace(/",?$/,'');
+        const row = new Array(w);
+        for(let c=0;c<w;c++){
+          const key = line.substr(c*cpp, cpp);
+          if(noneKeys.has(key)){ row[c] = NaN; continue; }
+          row[c] = key2index.has(key) ? key2index.get(key) : 0;
+        }
+        z[r] = row;
+      }
+      cb({width:w, height:h, z, palette});
+    };
+    reader.readAsText(file);
+  }
+
+  function symmetrizeLowerToFull(z){
+    const H = z.length, W = z[0].length;
+    const out = z.map(row=>row.slice());
+    for(let i=0;i<H;i++){
+      for(let j=i+1;j<W;j++){
+        const a = out[i][j], b = out[j][i];
+        if(Number.isFinite(a) && !Number.isFinite(b)) out[j][i] = a;
+        else if(!Number.isFinite(a) && Number.isFinite(b)) out[i][j] = b;
+        else if(Number.isFinite(a) && Number.isFinite(b)){
+          const m = 0.5*(a+b);
+          out[i][j] = m; out[j][i] = m;
+        }
+      }
+    }
+    return out;
+  }
+
+  function buildColorscale(palette, mode){
+    if(mode !== 'xpm'){ return mode; }
+    const pairs = [];
+    const valid = palette.map((c,i)=>[i,c]).filter(([i,c])=>c);
+    const n = valid.length;
+    if(n===0) return 'Greys';
+    for(let k=0;k<n;k++){
+      const t = k/(n-1 || 1);
+      pairs.push([t, valid[k][1]]);
+    }
+    return pairs;
+  }
+
+  function downsampleMatrix(z, step){
+    if(step<=1) return z;
+    const H = Math.floor(z.length/step);
+    const W = Math.floor(z[0].length/step);
+    const out = new Array(H);
+    for(let r=0;r<H;r++){
+      const row = new Array(W);
+      for(let c=0;c<W;c++){
+        row[c] = z[r*step][c*step];
+      }
+      out[r]=row;
+    }
+    return out;
+  }
+
+  function toNs(val, unit){ return unit==='ps' ? val/1000 : val; }
+  function fromNs(val, unit){ return unit==='ps' ? val*1000 : val; }
+
+  function parseRange(str){
+    if(!str) return null;
+    const parts = str.split(',').map(s=>parseFloat(s.trim()));
+    if(parts.length===2 && parts.every(v=>!Number.isNaN(v))){
+      // 若用户写反了，自动排序
+      return parts[0] <= parts[1] ? parts : [parts[1], parts[0]];
+    }
+    return null;
+  }
+
+  function drawXPM(){
+    try{
+      const file = document.getElementById('xpmFile').files[0];
+      if(!file){ Plotly.purge('plotXPM'); return; }
+      parseXPM(file, ({width, height, z, palette})=>{
+        const step = parseInt(document.getElementById('downsample').value||'1');
+        const revY = document.getElementById('revY').checked;
+        const dtVal = parseFloat(document.getElementById('dtVal').value||'0.1');
+        const dtUnit = document.getElementById('dtUnit').value;
+        const dispUnit = document.getElementById('timeUnitDisp').value;
+        const doSym = document.getElementById('symmetrize').checked;
+        const cmapMode = document.getElementById('xpmCmap').value;
+
+        const dtNs = toNs(dtVal, dtUnit);
+
+        let zDs = downsampleMatrix(z, step);
+        if (doSym) zDs = symmetrizeLowerToFull(zDs);
+
+        const H = zDs.length;
+        const W = zDs[0].length;
+        const xDs = Array.from({length: W}, (_, k) => fromNs(k * step * dtNs, dispUnit));
+        const yDs = Array.from({length: H}, (_, k) => fromNs(k * step * dtNs, dispUnit));
+
+        const colorscale = buildColorscale(palette, cmapMode);
+
+        // 自动 z 范围（忽略 NaN）
+        let zmin = Infinity, zmax = -Infinity;
+        for (let r = 0; r < H; r++) {
+          const row = zDs[r];
+          for (let c = 0; c < W; c++) {
+            const v = row[c];
+            if (Number.isFinite(v)) {
+              if (v < zmin) zmin = v;
+              if (v > zmax) zmax = v;
+            }
+          }
+        }
+        if (!isFinite(zmin) || !isFinite(zmax)) { zmin = 0; zmax = palette.length - 1; }
+
+        // ✨ 读取手动范围（单位=显示单位）
+        const xr = parseRange(document.getElementById('xpmXRange').value);
+        const yr = parseRange(document.getElementById('xpmYRange').value);
+        const xRange = xr ? xr : [xDs[0], xDs[xDs.length - 1]];
+        let yRange = yr ? yr : [yDs[0], yDs[yDs.length - 1]];
+        if(revY){ yRange = [yRange[1], yRange[0]]; } // 反转时保持视觉一致
+
+        Plotly.newPlot('plotXPM', [{
+          type:'heatmap',
+          z: zDs,
+          x: xDs,
+          y: yDs,
+          colorscale: colorscale,
+          showscale: true,
+          zsmooth: false,
+          zauto: false,
+          zmin, zmax
+        }], {
+          xaxis:{
+            title:`Time (${dispUnit})`,
+            showline:true, mirror:true, linecolor:'#e0e0e0',
+            range: xRange, constrain: 'domain' 
+          },
+          yaxis:{
+            title:`Time (${dispUnit})`,
+            autorange:false,              // 我们自己提供 range
+            scaleanchor:'x', scaleratio:1,
+            showline:true, mirror:true, linecolor:'#e0e0e0',
+            range: yRange, constrain: 'domain'
+          },
+          margin:{t:30}, plot_bgcolor:'#fff', paper_bgcolor:'#fff'
+        });
+      });
+    }catch(e){
+      console.error(e); alert('绘制 XPM 失败：' + e.message);
+    }
+  }
+
+  function downloadPNG(divId, filename){
+    const gd = document.getElementById(divId);
+    Plotly.Plots.resize(gd);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        Plotly.toImage(gd, {
+          format: 'png',
+          width: gd.layout?.width || gd.clientWidth || 1100,
+          height: gd.layout?.height || gd.clientHeight || 380,
+          scale: 2
+        }).then((url) => {
+          const a = document.createElement('a');
+          a.href = url; a.download = filename + '.png';
+          document.body.appendChild(a); a.click(); a.remove();
+        }).catch(err => {
+          console.error(err);
+          alert('导出失败：' + err.message);
+        });
+      }, 50);
+    });
+  }
+</script>
+</body>
+</html>

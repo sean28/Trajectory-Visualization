@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Trajectory Visualization Suite</title>
+<style>
+/* ——— Base ——— */
+:root{--bg:#0b1020;--card:#121833;--text:#e9eefc;--muted:#9fb0d6;--accent:#6aa3ff;--accent-2:#8cf0d1;--bd:rgba(255,255,255,.08)}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:radial-gradient(1200px 800px at 80% -10%,#1a2660 0%,#0b1020 60%),radial-gradient(800px 600px at -10% 120%,#0f3d66 0%,#0b1020 55%),#0b1020;color:var(--text)}
+a{color:inherit;text-decoration:none}
+.container{max-width:1100px;margin:0 auto;padding:24px}
+.header{display:flex;gap:14px;align-items:center;justify-content:space-between;margin-bottom:18px}
+.title{font-weight:800;letter-spacing:.3px;font-size:22px;display:flex;align-items:center;gap:10px}
+.badge{font-size:12px;border:1px solid var(--bd);padding:2px 10px;border-radius:999px;color:var(--muted);background:rgba(255,255,255,0.03)}
+.actions{display:flex;gap:10px;align-items:center}
+.search{flex:1;min-width:240px;max-width:420px;display:flex;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:8px 12px}
+.search input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:14px}
+.kbd{font-size:11px;color:var(--muted);border:1px solid var(--bd);border-radius:6px;padding:2px 6px;margin-left:8px}
+.toggle{border:1px solid var(--bd);background:var(--card);color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer}
+.sub{color:var(--muted);font-size:12px;margin-top:-6px;margin-bottom:14px}
+
+/* ——— Grid ——— */
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.grid{grid-template-columns:1fr}}
+.card{position:relative;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));border:1px solid var(--bd);border-radius:16px;padding:14px;min-height:120px;transition:transform .15s ease,box-shadow .15s ease;border-top:1px solid rgba(255,255,255,.14)}
+.card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.card h3{font-size:15px;margin:0 0 2px 0}
+.card p{margin:0;color:var(--muted);font-size:12px;line-height:1.35}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+.btn{font-size:13px;border:1px solid var(--bd);background:rgba(255,255,255,.06);padding:7px 10px;border-radius:10px;cursor:pointer}
+.btn:hover{border-color:rgba(255,255,255,.3)}
+.tag{font-size:11px;color:var(--muted);border:1px solid var(--bd);border-radius:999px;padding:2px 8px}
+
+/* ——— Footer ——— */
+.footer{margin-top:18px;display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:12px}
+.links{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ——— Light mode ——— */
+.light{--bg:#f7f8fc;--card:#ffffff;--text:#1c2640;--muted:#586b91;--accent:#245fdd;--accent-2:#0f9e7a;--bd:rgba(0,0,0,.09)}
+.light body{background:linear-gradient(180deg,#f8fbff,#f6f7fc)}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="title">Trajectory Visualization<span class="badge">8 tools</span></div>
+    <div class="actions">
+      <div class="search"><input id="q" placeholder="Search tools (name or keyword)…" aria-label="Search"/><span class="kbd">/</span></div>
+      <button id="mode" class="toggle" title="Toggle light/dark">Dark</button>
+    </div>
+  </div>
+  <div class="sub">Place this <code>index.html</code> next to your visualizer pages (same folder). Click any card to open in a new tab.</div>
+
+  <div id="grid" class="grid">
+    <!-- cards injected by JS -->
+  </div>
+
+  <div class="footer">
+    <div>Each visualizer opens in its own page with interactive charts.</div>
+    <div class="links">
+      <span class="tag">GROMACS</span><span class="tag">XVG</span><span class="tag">Analysis</span><span class="tag">Plotly</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/** Tool manifest — filenames from你的目录结构 **/
+const TOOLS = [
+  {file:'0RMSF-XVG-Visualizer.html',  name:'RMSF Visualizer',   desc:'Per-residue fluctuation (RMSF) plots; highlight flexible segments.',        tags:['RMSF','per-residue']},
+  {file:'1RMSD-XVG-Visualizer.html',  name:'RMSD Visualizer',   desc:'Backbone/CA RMSD vs. time; compare multiple trajectories.',                 tags:['RMSD','time series']},
+  {file:'2SASA-XVG-Visualizer.html',  name:'SASA Visualizer',   desc:'Solvent accessible surface area trends; chain/domain breakdown.',           tags:['SASA','surface area']},
+  {file:'3RG-XVG-Visualizer.html',    name:'Rg Visualizer',     desc:'Radius of gyration vs. time; fold/unfold transitions.',                     tags:['Rg','compactness']},
+  {file:'4Cluster-XVG-Visualizer.html',name:'Cluster Visualizer',desc:'Cluster population and transitions; state metrics over time.',              tags:['clusters','states']},
+  {file:'5PCA-FEL-XVG-Visualizer.html',name:'PCA FEL Visualizer',desc:'Free energy landscape on PCs; identify basins and pathways.',             tags:['PCA','FEL','2D']},
+  {file:'5PCA-XPM-Visualizer.html',   name:'PCA XPM Visualizer',desc:'XPM density/heatmap from PCA; publication-ready images.',                    tags:['PCA','XPM','heatmap']},
+  {file:'5PCA-XVG-Visualizer.html',   name:'PCA (XVG) Visualizer',desc:'PC time projections / scatter; compare PC pairs quickly.',                 tags:['PCA','PC1/PC2']}
+];
+
+/** Render cards */
+const grid = document.getElementById('grid');
+function cardHTML(t){
+  const tags = (t.tags||[]).map(x=>`<span class="tag">${x}</span>`).join(' ');
+  return `<a class="card" href="${t.file}" target="_blank" rel="noopener">
+    <h3>${t.name}</h3>
+    <p>${t.desc}</p>
+    <div class="row"><span class="btn">Open</span><span>${tags}</span></div>
+  </a>`;
+}
+function render(list){ grid.innerHTML = list.map(cardHTML).join(''); }
+render(TOOLS);
+
+/** Search */
+const q = document.getElementById('q');
+function doFilter(val){
+  const v = (val||'').trim().toLowerCase();
+  if(!v){ render(TOOLS); return; }
+  const out = TOOLS.filter(t =>
+    t.name.toLowerCase().includes(v) ||
+    t.desc.toLowerCase().includes(v) ||
+    (t.tags||[]).some(tag=>tag.toLowerCase().includes(v)) ||
+    t.file.toLowerCase().includes(v)
+  );
+  render(out);
+}
+q.addEventListener('input', e=>doFilter(e.target.value));
+window.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement!==q){ e.preventDefault(); q.focus(); }});
+
+/** Theme toggle */
+const modeBtn = document.getElementById('mode');
+function setMode(light){ document.documentElement.classList.toggle('light', light); modeBtn.textContent = light?'Light':'Dark'; }
+setMode(true);
+modeBtn.addEventListener('click', ()=>setMode(!document.documentElement.classList.contains('light')));
+</script>
+</body>
+</html>

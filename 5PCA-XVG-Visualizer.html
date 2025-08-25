@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PCA (covar/anaeig) Visualizer</title>
+  <script src="./plotly-latest.min.js"></script>
+  <style>
+    body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:2rem;}
+    .container{max-width:1100px;margin:auto;background:#fff;padding:2rem;border-radius:12px;box-shadow:0 0 10px rgba(0,0,0,.05);}
+    h2{text-align:center;margin-bottom:1rem;}
+    h3{margin:1.2rem 0 .6rem;}
+    .form-group{margin-bottom:1rem;}
+    label{display:block;margin-bottom:.3rem;font-weight:bold;}
+    input[type="text"], input[type="number"], select{
+      padding:6px 6px;border:1px solid #ccc;border-radius:6px;font-size:14px;outline:none;transition:all .2s;
+      width:50%;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, select:focus{border-color:#007bff;}
+    button{padding:.6rem 1rem;font-size:1rem;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;}
+    button:hover{background:#0056b3;}
+    .row{display:flex;gap:1rem;flex-wrap:wrap;}
+    .col{flex:1;min-width:220px}
+    .file-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;}
+    .pill{background:#f1f3f5;border-radius:999px;padding:.2rem .6rem;font-size:.9rem}
+    .toolbar{display:flex;gap:.6rem;flex-wrap:wrap}
+    .inline{display:inline-flex;align-items:center;gap:8px}
+    .snap{width:110px}
+    #plotScree,#plotPC{margin-top:1rem;}
+    #statsScree{font-family:monospace;background:#f7f7f7;padding:1rem;border-radius:8px;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>PCA Visualizer (GROMACS covar/anaeig)</h2>
+
+  <!-- ===== 1) eigenval.xvg → Scree Plot ===== -->
+  <h3>1) Eigenvalues (.xvg from gmx covar)</h3>
+  <div class="form-group">
+    <div class="file-row">
+      <span class="pill">Eigenvalues</span>
+      <input type="file" id="eigFile" accept=".xvg">
+      <div class="toolbar">
+        <button onclick="drawScree()">Plot Scree</button>
+        <button onclick="downloadPNG('plotScree','pca_scree')">Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>X-axis Label</label>
+        <input id="eigXLabel" type="text" value="Principal Component (index)">
+      </div>
+      <div class="col">
+        <label>Y-axis Label</label>
+        <input id="eigYLabel" type="text" value="Eigenvalue (variance)">
+      </div>
+      <div class="col">
+        <label>Axis Ticks</label>
+        <div class="inline">
+          <span>X</span><input id="eigXTick" class="snap" type="number" step="1" placeholder="auto">
+          <span>Y</span><input id="eigYTick" class="snap" type="number" step="0.01" placeholder="auto">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="plotScree"></div>
+  <div class="form-group">
+    <label>Explained Variance:</label>
+    <div id="statsScree"></div>
+  </div>
+
+  <hr>
+
+  <!-- ===== 2) anaeig projections → 2D scatter ===== -->
+  <h3>2) 2D Projections (.xvg from gmx anaeig: 2d_*, proj_*)</h3>
+  <div class="form-group">
+    <label>Upload 2D projection files (multiple groups):</label>
+    <div id="fileProj">
+      <div class="file-row">
+        <span class="pill">Group 1</span>
+        <input type="file" class="xvgProj" accept=".xvg">
+        <input type="color" class="colorProj" value="#1f77b4" title="Color">
+        <input type="text" class="nameProj" placeholder="Group 1" style="flex:1;">
+        <button onclick="removeRow(this)">×</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button type="button" onclick="addProj()">➕ Add Group</button>
+      <button onclick="drawPC()">Plot 2D PCA</button>
+      <button onclick="downloadPNG('plotPC','pca_scatter')">Download PNG</button>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div class="col">
+        <label>X-axis Label</label>
+        <input id="pcXLabel" type="text" value="PC X">
+      </div>
+      <div class="col">
+        <label>Y-axis Label</label>
+        <input id="pcYLabel" type="text" value="PC Y">
+      </div>
+      <div class="col">
+        <label>Axis Ticks</label>
+        <div class="inline">
+          <span>X</span><input id="pcXTick" class="snap" type="number" step="0.1" placeholder="auto">
+          <span>Y</span><input id="pcYTick" class="snap" type="number" step="0.1" placeholder="auto">
+        </div>
+      </div>
+      <div class="col">
+        <label>Color Mode</label>
+        <select id="colorMode">
+          <option value="fixed" selected>Fixed (per group color)</option>
+          <option value="time">By time (gradient)</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>Marker</label>
+        <div class="inline">
+          <span>Size</span><input id="markerSize" type="number" class="snap" min="2" value="6">
+          <span>Opacity</span><input id="markerOpacity" type="number" class="snap" min="0.1" max="1" step="0.1" value="0.8">
+        </div>
+      </div>
+
+      <!-- ⭐ 新增：Figure Size（仅作用于 2D Projections 图） -->
+      <div class="col">
+        <label>Figure Size (width,height)</label>
+        <input id="pcFigSize" type="text" value="500,400">
+      </div>
+      <!-- ⭐ 结束 -->
+    </div>
+  </div>
+
+  <div id="plotPC"></div>
+</div>
+
+<script>
+  // ===== Utilities =====
+  function removeRow(btn){ btn.parentNode.remove(); refreshPills(); }
+  function refreshPills(){
+    document.querySelectorAll('#fileProj .file-row .pill').forEach((el,i)=>el.textContent=`Group ${i+1}`);
+  }
+  function addProj(){
+    const c = document.getElementById('fileProj');
+    const div = document.createElement('div');
+    div.className='file-row';
+    div.innerHTML = `
+      <span class="pill">Group ${c.children.length+1}</span>
+      <input type="file" class="xvgProj" accept=".xvg">
+      <input type="color" class="colorProj" value="#ff7f0e" title="Color">
+      <input type="text" class="nameProj" placeholder="Group ${c.children.length+1}" style="flex:1;">
+      <button onclick="removeRow(this)">×</button>`;
+    c.appendChild(div);
+  }
+
+  // Robust XVG parser
+  function parseXVG(file, cb){
+    const rx = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const lines = reader.result.split(/\r?\n/);
+      const data = [];
+      for(const lineRaw of lines){
+        const line = lineRaw.trim();
+        if(!line || line[0]==='@' || line[0]==='#') continue;
+        const matches = line.match(rx);
+        if(!matches) continue;
+        const nums = matches.map(Number).filter(v=>!Number.isNaN(v));
+        if(nums.length) data.push(nums);
+      }
+      cb(data);
+    };
+    reader.readAsText(file);
+  }
+
+  // ===== 1) Scree plot =====
+  function drawScree(){
+    const file = document.getElementById('eigFile').files[0];
+    if(!file){ Plotly.purge('plotScree'); document.getElementById('statsScree').textContent=''; return; }
+
+    parseXVG(file, (rows)=>{
+      let eigvals = [];
+      for(const r of rows){
+        if(r.length===1) eigvals.push(r[0]);
+        else if(r.length>=2) eigvals.push(r[1]);
+      }
+      eigvals = eigvals.filter(v=>Number.isFinite(v) && v>=0);
+      if(eigvals.length===0){ alert('No valid eigenvalues parsed.'); return; }
+
+      const total = eigvals.reduce((a,b)=>a+b,0);
+      const pct   = eigvals.map(v=> (v/total)*100);
+      const cum   = []; pct.reduce((acc,cur,i)=> (cum[i]=acc+cur, acc+cur), 0);
+
+      const x = eigvals.map((_,i)=> i+1);
+      const xdtick = parseFloat(document.getElementById('eigXTick').value);
+      const ydtick = parseFloat(document.getElementById('eigYTick').value);
+
+      Plotly.newPlot('plotScree', [
+        { type:'bar', x, y: eigvals, name:'Eigenvalue', marker:{color:'#1f77b4'}, yaxis:'y' },
+        { type:'scatter', x, y: cum, name:'Cumulative %', mode:'lines+markers', yaxis:'y2' }
+      ], {
+        xaxis:{ title: document.getElementById('eigXLabel').value, dtick: Number.isNaN(xdtick)? undefined : xdtick, showline:true, mirror:true, linecolor:'#e0e0e0' },
+        yaxis:{ title: document.getElementById('eigYLabel').value, dtick: Number.isNaN(ydtick)? undefined : ydtick, showline:true, mirror:true, linecolor:'#e0e0e0' },
+        yaxis2:{ title:'Cumulative (%)', overlaying:'y', side:'right', range:[0,100], showline:true, linecolor:'#e0e0e0' },
+        legend:{orientation:'h'},
+        margin:{t:30},
+        plot_bgcolor:'#fff', paper_bgcolor:'#fff'
+      });
+
+      const k = Math.min(10, eigvals.length);
+      let txt = '';
+      for(let i=0;i<k;i++){
+        txt += `PC${i+1}: eig=${eigvals[i].toExponential(3)}  pct=${pct[i].toFixed(2)}%  cum=${cum[i].toFixed(2)}%\n`;
+      }
+      txt += `\nTotal variance = ${total.toExponential(3)}`;
+      document.getElementById('statsScree').textContent = txt;
+    });
+  }
+
+  // ===== 2) 2D projection scatter =====
+  function drawPC(){
+    const files = document.querySelectorAll('.xvgProj');
+    const colors = document.querySelectorAll('.colorProj');
+    const names  = document.querySelectorAll('.nameProj');
+
+    const colorMode = document.getElementById('colorMode').value;
+    const mSize = parseFloat(document.getElementById('markerSize').value || '6');
+    const mOpacity = parseFloat(document.getElementById('markerOpacity').value || '0.8');
+
+    // ⭐ 新增：读取图尺寸（width,height）
+    const figVal = (document.getElementById('pcFigSize').value || '').split(',');
+    const figW = parseInt(figVal[0], 10);
+    const figH = parseInt((figVal[1]||'').trim(), 10);
+    const layoutSize = {};
+    if(Number.isFinite(figW)) layoutSize.width = figW;
+    if(Number.isFinite(figH)) layoutSize.height = figH;
+    // ⭐ 结束
+
+    const traces = [];
+    let total=0, done=0;
+    files.forEach(f=>{ if(f.files[0]) total++; });
+    if(total===0){ Plotly.purge('plotPC'); return; }
+
+    files.forEach((inp, idx)=>{
+      const file = inp.files[0]; if(!file) return;
+      parseXVG(file, (rows)=>{
+        const x=[], y=[], t=[];
+        let hasTime=false;
+        for(const r of rows){
+          if(r.length>=3){ hasTime=true; t.push(r[0]); x.push(r[1]); y.push(r[2]); }
+          else if(r.length>=2){ x.push(r[0]); y.push(r[1]); }
+        }
+        const name = names[idx].value || `Group ${idx+1}`;
+
+        if(colorMode==='time' && (hasTime || x.length>0)){
+          const timeArr = hasTime ? t : x.map((_,i)=>i);
+          traces.push({
+            type:'scattergl', mode:'markers',
+            x, y, name,
+            marker:{ size:mSize, opacity:mOpacity, color: timeArr, colorscale:'Turbo', showscale:true, colorbar:{title: hasTime?'Time':'Index'} }
+          });
+        }else{
+          traces.push({
+            type:'scattergl', mode:'markers',
+            x, y, name, marker:{ size:mSize, opacity:mOpacity, color: colors[idx].value }
+          });
+        }
+
+        done++;
+        if(done===total){
+          const xdtick = parseFloat(document.getElementById('pcXTick').value);
+          const ydtick = parseFloat(document.getElementById('pcYTick').value);
+          Plotly.newPlot('plotPC', traces, Object.assign({
+            xaxis:{ title: document.getElementById('pcXLabel').value, dtick: Number.isNaN(xdtick)? undefined : xdtick, zeroline:true, showline:true, mirror:true, linecolor:'#e0e0e0' },
+            yaxis:{ title: document.getElementById('pcYLabel').value, dtick: Number.isNaN(ydtick)? undefined : ydtick, zeroline:true, showline:true, mirror:true, linecolor:'#e0e0e0' },
+            margin:{t:30},
+            plot_bgcolor:'#fff', paper_bgcolor:'#fff'
+          }, layoutSize)); // ⭐ 应用尺寸
+        }
+      });
+    });
+  }
+
+  // ===== download helper =====
+  function downloadPNG(divId, filename){
+    const gd = document.getElementById(divId);
+    Plotly.Plots.resize(gd);
+    requestAnimationFrame(()=> {
+      setTimeout(()=>{
+        Plotly.toImage(gd, {
+          format:'png',
+          width: gd.layout?.width || gd.clientWidth || 1100,
+          height: gd.layout?.height || gd.clientHeight || 380,
+          scale: 2
+        }).then((url)=>{
+          const a=document.createElement('a'); a.href=url; a.download=filename+'.png';
+          document.body.appendChild(a); a.click(); a.remove();
+        }).catch(e=>{ console.error(e); alert('Export failed: '+e.message); });
+      }, 50);
+    });
+  }
+</script>
+</body>
+</html>
