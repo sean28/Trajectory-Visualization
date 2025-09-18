@@ -6,17 +6,19 @@
   <script src="./plotly-latest.min.js"></script>
   <style>
     body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:2rem;}
-    .container{max-width:1000px;margin:auto;background:#fff;padding:2rem;border-radius:12px;box-shadow:0 0 10px rgba(0, 0, 0, 0.05);}
+    .container{max-width:1000px;margin:auto;background:#fff;padding:2rem;border-radius:12px;box-shadow:0 0 10px rgba(0,0,0,0.05);}
     h2{text-align:center;margin-bottom:1rem;}
     .form-group{margin-bottom:1rem;}
     label{display:block;margin-bottom:0.3rem;font-weight:bold;}
     input[type="text"], select{width:100%;padding:0.5rem;font-size:1rem;}
-    button{padding:0.6rem 1.2rem;font-size:1rem;background:#007bff;color:white;border:none;border-radius:6px;cursor:pointer;margin-top:0.5rem;}
+    button{padding:0.6rem 1.2rem;font-size:1rem;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-top:0.5rem;}
     button:hover{background:#0056b3;}
-    #plot{margin-top:2rem;}
+    #plot,#distPlot{margin-top:2rem;}
+    .row{display:flex;gap:2rem}
+    .row>div{flex:1}
+    .mini{display:inline-flex;align-items:center;gap:6px}
   </style>
 </head>
-
 <body>
 <div class="container">
   <h2>SASA-XVG Visualizer</h2>
@@ -24,48 +26,49 @@
   <div class="form-group">
     <label>Upload .xvg Files (Multiple Groups):</label>
     <div id="fileInputs">
-      <div class="file-group" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+      <div class="file-group" style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
         <label>Group 1:</label>
         <input type="file" class="xvgFile" accept=".xvg">
         <label>Line Color:</label>
         <input type="color" class="colorPicker" value="#1f77b4">
         <label>Group name:</label>
         <input type="text" class="groupName" placeholder="Group 1" style="flex:1;">
-        <button onclick="removeGroup(this)" style="padding: 0.2rem 0.5rem;">×</button>
+        <button onclick="removeGroup(this)" style="padding:0.2rem 0.5rem;">×</button>
       </div>
     </div>
     <button type="button" onclick="addFileInput()">➕ Add Group</button>
     <button onclick="drawPlot()">Generate Plot</button>
+    <button onclick="exportBoth()">Export Both PNG</button>
   </div>
 
-  <div class="form-group" style="display: flex; gap: 2rem;">
-    <div style="flex: 1;">
+  <div class="row">
+    <div>
       <label for="xlabel">X-axis Label:</label>
       <input type="text" id="xlabel" value="Time (ns)">
     </div>
-    <div style="flex: 1;">
+    <div>
       <label for="ylabel">Y-axis Label:</label>
       <input type="text" id="ylabel" value="SASA (nm²)">
     </div>
   </div>
 
-  <div class="form-group" style="display: flex; gap: 2rem;">
-    <div style="flex: 1;">
+  <div class="row">
+    <div>
       <label for="tickX">X-axis Tick Spacing:</label>
       <input type="text" id="tickX" value="10">
     </div>
-    <div style="flex: 1;">
+    <div>
       <label for="tickY">Y-axis Tick Spacing:</label>
       <input type="text" id="tickY" value="10">
     </div>
   </div>
 
-  <div class="form-group" style="display: flex; gap: 2rem;">
-    <div style="flex: 1;">
+  <div class="row">
+    <div>
       <label for="xrange">X-axis Range (min,max) [optional]:</label>
       <input type="text" id="xrange" placeholder="e.g. 0,100">
     </div>
-    <div style="flex: 1;">
+    <div>
       <label for="yrange">Y-axis Range (min,max) [optional]:</label>
       <input type="text" id="yrange" placeholder="e.g. 0,50">
     </div>
@@ -76,217 +79,316 @@
     <input type="text" id="figSize" value="1000,350">
   </div>
 
-  <div class="form-group" style="display: flex; gap: 5rem; align-items: center;">
-    <div style="display:inline-flex; align-items:center; gap:4px;">
+  <div class="form-group" style="display:flex;gap:1.2rem;align-items:center;flex-wrap:wrap">
+    <div class="mini">
       <label for="lineWidth">Line Width:</label>
-      <input type="number" id="lineWidth" value="2" step="0.5">
+      <input type="number" id="lineWidth" value="2" step="0.5" style="width:70px">
     </div>
-    <div style="display:inline-flex; align-items:center; gap:4px;">
+    <div class="mini">
       <label for="unitSelector">Y Unit:</label>
-      <select id="unitSelector" onchange="switchUnit()" style="width:70px;">
+      <select id="unitSelector" onchange="switchUnit()" style="width:80px;">
         <option value="nm²" selected>nm²</option>
         <option value="Å²">Å²</option>
       </select>
     </div>
-    <div style="flex: 1;">
-      <label><input type="checkbox" id="showMarkers"> Show Markers</label>
-    </div>
-  
-    <div style="display:inline-flex; align-items:center; gap:10px;">
-      <label><input type="checkbox" id="enableSmooth"> Smooth </label>
+    <div><label><input type="checkbox" id="showMarkers"> Show Markers</label></div>
+    <div class="mini">
+      <label><input type="checkbox" id="enableSmooth"> Smooth (moving avg)</label>
       <input type="number" id="smoothWin" value="5" min="2" step="1" style="width:60px;">
+    </div>
+    <!-- 分布图控制 -->
+    <div><label><input type="checkbox" id="showDist" checked> Show Distribution (%) below</label></div>
+    <div class="mini">
+      <label for="nbins">Bins:</label>
+      <input type="number" id="nbins" value="40" min="5" max="200" style="width:70px">
+    </div>
+    <div class="mini">
+      <label><input type="checkbox" id="useKDE" checked> KDE curve</label>
+      <input type="number" id="kdeGrid" value="200" min="50" max="1000" step="50" style="width:70px" title="Grid points for KDE">
+    </div>
+    <!-- 新增：论文风格 -->
+    <div class="mini">
+      <label><input type="checkbox" id="thesisMode"> Thesis Mode</label>
     </div>
   </div>
 
+  <!-- 主折线图 -->
   <div id="plot"></div>
+
+  <!-- 分布百分比图 -->
+  <div id="distPlot"></div>
 
   <div class="form-group">
     <label>SASA Statistics:</label>
-    <div id="statsOutput" style="font-family: monospace; background: #f0f0f0; padding: 1rem; border-radius: 8px;"></div>
+    <div id="statsOutput" style="font-family:monospace;background:#f0f0f0;padding:1rem;border-radius:8px;"></div>
   </div>
 </div>
 
 <script>
   let groupCount = 1;
   let currentUnit = "nm²";
-  const colorPalette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"];
+  const colorPalette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
 
-  function addFileInput() {
+  function addFileInput(){
     groupCount++;
-    const container = document.getElementById("fileInputs");
-    const div = document.createElement("div");
-    div.className = "file-group";
-    div.style = "display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;";
-    const defaultColor = colorPalette[(groupCount - 1) % colorPalette.length];
-    div.innerHTML = `
+    const container=document.getElementById("fileInputs");
+    const div=document.createElement("div");
+    div.className="file-group";
+    div.style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;";
+    const defaultColor=colorPalette[(groupCount-1)%colorPalette.length];
+    div.innerHTML=`
       <label>Group ${groupCount}:</label>
       <input type="file" class="xvgFile" accept=".xvg">
       <label>Line Color:</label>
       <input type="color" class="colorPicker" value="${defaultColor}">
       <label>Group name:</label>
       <input type="text" class="groupName" placeholder="Group ${groupCount}" style="flex:1;">
-      <button onclick="removeGroup(this)" style="padding: 0.2rem 0.5rem;">×</button>
-    `;
+      <button onclick="removeGroup(this)" style="padding:0.2rem 0.5rem;">×</button>`;
     container.appendChild(div);
   }
-
-  function removeGroup(btn) {
+  function removeGroup(btn){
     btn.parentNode.remove();
     resetGroupLabels();
   }
-
-  function resetGroupLabels() {
-    const groups = document.querySelectorAll(".file-group");
-    groupCount = 0;
-    groups.forEach((group, idx) => {
-      const label = group.querySelector("label");
-      const nameInput = group.querySelector(".groupName");
-      const colorInput = group.querySelector(".colorPicker");
-      groupCount = idx + 1;
-      label.textContent = `Group ${groupCount}:`;
-      nameInput.placeholder = `Group ${groupCount}`;
-      if (!nameInput.value) nameInput.value = `Group ${groupCount}`;
-      colorInput.value = colorPalette[idx % colorPalette.length];
+  function resetGroupLabels(){
+    const groups=document.querySelectorAll(".file-group");
+    groupCount=0;
+    groups.forEach((g,idx)=>{
+      const label=g.querySelector("label");
+      const nameInput=g.querySelector(".groupName");
+      const colorInput=g.querySelector(".colorPicker");
+      groupCount=idx+1;
+      label.textContent=`Group ${groupCount}:`;
+      nameInput.placeholder=`Group ${groupCount}`;
+      if(!nameInput.value) nameInput.value=`Group ${groupCount}`;
+      colorInput.value=colorPalette[idx%colorPalette.length];
     });
   }
-
-  function switchUnit() {
-    const selected = document.getElementById("unitSelector").value;
-    currentUnit = selected;
+  function switchUnit(){
+    const selected=document.getElementById("unitSelector").value;
+    currentUnit=selected;
     drawPlot();
   }
 
-  function parseXVG(file, callback) {
-    const reader = new FileReader();
-    reader.onload = function () {
-      const lines = reader.result.split("\n");
-      const data = [];
-      for (let line of lines) {
-        if (line.startsWith("@") || line.startsWith("#") || line.trim() === "") continue;
-        const [x, y] = line.trim().split(/\s+/).map(Number);
-        if (!isNaN(x) && !isNaN(y)) data.push([x, y]);
+  function parseXVG(file,cb){
+    const reader=new FileReader();
+    reader.onload=function(){
+      const lines=reader.result.split("\n");
+      const data=[];
+      for(let line of lines){
+        if(line.startsWith("@")||line.startsWith("#")||line.trim()==="") continue;
+        const [x,y]=line.trim().split(/\s+/).map(Number);
+        if(!isNaN(x)&&!isNaN(y)) data.push([x,y]);
       }
-      callback(data);
+      cb(data);
     };
     reader.readAsText(file);
   }
 
-  // ✅ 新增：移动平均平滑（仅用于显示）
-  function movingAverage(arr, win){
-    if (!Array.isArray(arr) || arr.length === 0 || win <= 1) return arr.slice();
-    const out = [];
-    let sum = 0;
-    for (let i = 0; i < arr.length; i++) {
-      sum += arr[i];
-      if (i >= win) sum -= arr[i - win];
-      out.push(i >= win - 1 ? sum / win : arr[i]); // 前 win-1 个点保留原值
+  function movingAverage(arr,win){
+    if(!Array.isArray(arr)||arr.length===0||win<=1) return arr.slice();
+    const out=[]; let sum=0;
+    for(let i=0;i<arr.length;i++){
+      sum+=arr[i];
+      if(i>=win) sum-=arr[i-win];
+      out.push(i>=win-1? sum/win : arr[i]);
     }
     return out;
   }
 
-  function drawPlot() {
-    window.sasaStats = [];
-    document.getElementById("statsOutput").innerHTML = "";
+  // HEX -> RGBA with alpha
+  function hex2rgba(hex, a){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if(!m) return `rgba(31,119,180,${a})`;
+    const r=parseInt(m[1],16), g=parseInt(m[2],16), b=parseInt(m[3],16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
 
-    const xLabel = document.getElementById("xlabel").value;
-    let yLabel = document.getElementById("ylabel").value;
+  // 简易 Gaussian KDE（y 输出为百分比密度）
+  function kdeGaussian(samples, gridMin, gridMax, steps){
+    const n=samples.length;
+    if(n===0) return {x:[],y:[]};
+    const mean = samples.reduce((a,b)=>a+b,0)/n;
+    const sd = Math.sqrt(samples.reduce((a,b)=>a+(b-mean)**2,0)/n) || 1e-8;
+    const h = 1.06*sd*Math.pow(n,-1/5);
+    const xs=[]; const ys=[];
+    const step=(gridMax-gridMin)/steps;
+    for(let i=0;i<=steps;i++){
+      const x=gridMin+i*step;
+      let sum=0;
+      for(let s of samples){
+        const u=(x-s)/h;
+        sum+=Math.exp(-0.5*u*u)/Math.sqrt(2*Math.PI);
+      }
+      const dens = (sum/(n*h));
+      xs.push(x);
+      ys.push(dens*100); // (%)
+    }
+    return {x:xs,y:ys};
+  }
 
-    // 自动更新单位后缀
-    if (currentUnit === "Å²" && yLabel.includes("nm²")) {
-      yLabel = yLabel.replace("nm²", "Å²");
-      document.getElementById("ylabel").value = yLabel;
-    } else if (currentUnit === "nm²" && yLabel.includes("Å²")) {
-      yLabel = yLabel.replace("Å²", "nm²");
-      document.getElementById("ylabel").value = yLabel;
+  function drawPlot(){
+    window.sasaStats=[];
+    document.getElementById("statsOutput").innerHTML="";
+
+    const xLabel=document.getElementById("xlabel").value;
+    let yLabel=document.getElementById("ylabel").value;
+    if(currentUnit==="Å²" && yLabel.includes("nm²")){
+      yLabel=yLabel.replace("nm²","Å²");
+      document.getElementById("ylabel").value=yLabel;
+    }else if(currentUnit==="nm²" && yLabel.includes("Å²")){
+      yLabel=yLabel.replace("Å²","nm²");
+      document.getElementById("ylabel").value=yLabel;
     }
 
-    const showMarkers = document.getElementById("showMarkers").checked;
-    const lineWidth = parseFloat(document.getElementById("lineWidth").value);
-    const tickX = parseFloat(document.getElementById("tickX").value);
-    const tickY = parseFloat(document.getElementById("tickY").value);
-    const [figW, figH] = document.getElementById("figSize").value.split(",").map(Number);
-    const xrange = document.getElementById("xrange").value.split(",").map(Number);
-    const yrange = document.getElementById("yrange").value.split(",").map(Number);
+    const showMarkers=document.getElementById("showMarkers").checked;
+    const lineWidth=parseFloat(document.getElementById("lineWidth").value);
+    const tickX=parseFloat(document.getElementById("tickX").value);
+    const tickY=parseFloat(document.getElementById("tickY").value);
+    const [figW,figH]=document.getElementById("figSize").value.split(",").map(Number);
+    const xrange=document.getElementById("xrange").value.split(",").map(Number);
+    const yrange=document.getElementById("yrange").value.split(",").map(Number);
 
-    // ✅ 新增：读取平滑设置
-    const enableSmooth = document.getElementById("enableSmooth").checked;
-    const smoothWin = parseInt(document.getElementById("smoothWin").value || "5");
+    const enableSmooth=document.getElementById("enableSmooth").checked;
+    const smoothWin=parseInt(document.getElementById("smoothWin").value||"5");
 
-    const files = document.querySelectorAll(".xvgFile");
-    const colors = document.querySelectorAll(".colorPicker");
-    const names = document.querySelectorAll(".groupName");
+    const thesisMode=document.getElementById("thesisMode").checked;
+    const useKDE=document.getElementById("useKDE").checked;
 
-    const traces = [];
-    let completed = 0;
+    const files=document.querySelectorAll(".xvgFile");
+    const colors=document.querySelectorAll(".colorPicker");
+    const names=document.querySelectorAll(".groupName");
 
-    files.forEach((input, idx) => {
-      const file = input.files[0];
-      if (!file) return;
+    const traces=[]; const distTraces=[];
+    let completed=0, totalSelected=0;
+    files.forEach((inp)=>{ if(inp.files[0]) totalSelected++; });
 
-      parseXVG(file, (data) => {
-        const x = data.map(p => p[0]);
-        const yRaw = data.map(p => p[1] * (currentUnit === "Å²" ? 100 : 1)); // 原始（用于统计）
-        const yPlot = enableSmooth ? movingAverage(yRaw, Math.max(2, smoothWin)) : yRaw; // 仅用于绘图
+    if(totalSelected===0){
+      Plotly.purge("plot"); Plotly.purge("distPlot");
+      document.getElementById("statsOutput").innerHTML="(No file selected)";
+      return;
+    }
 
-        const mean = yRaw.reduce((a, b) => a + b, 0) / yRaw.length;
-        const sd = Math.sqrt(yRaw.reduce((a, b) => a + (b - mean) ** 2, 0) / yRaw.length);
-        const min = Math.min(...yRaw);
-        const max = Math.max(...yRaw);
+    files.forEach((input, idx)=>{
+      const file=input.files[0];
+      if(!file) return;
+
+      parseXVG(file,(data)=>{
+        const x=data.map(p=>p[0]);
+        const conv=(currentUnit==="Å²"?100:1);
+        const yRaw=data.map(p=>p[1]*conv);
+        const yPlot=enableSmooth? movingAverage(yRaw, Math.max(2,smoothWin)) : yRaw;
+
+        const mean=yRaw.reduce((a,b)=>a+b,0)/yRaw.length;
+        const sd=Math.sqrt(yRaw.reduce((a,b)=>a+(b-mean)**2,0)/yRaw.length);
+        const min=Math.min(...yRaw);
+        const max=Math.max(...yRaw);
 
         window.sasaStats.push({
-          name: names[idx].value || `Group ${idx + 1}`,
-          mean: mean.toFixed(4),
-          sd: sd.toFixed(4),
-          min: min.toFixed(4),
-          max: max.toFixed(4)
+          name:names[idx].value||`Group ${idx+1}`,
+          mean:mean.toFixed(4), sd:sd.toFixed(4), min:min.toFixed(4), max:max.toFixed(4)
         });
 
+        // 主曲线
         traces.push({
-          x, y: yPlot,
-          type: "scatter",
-          mode: showMarkers ? "lines+markers" : "lines",
-          name: names[idx].value || `Group ${idx + 1}`,
-          line: { color: colors[idx].value, width: lineWidth }
+          x, y:yPlot, type:"scatter", mode:showMarkers?"lines+markers":"lines",
+          name:names[idx].value||`Group ${idx+1}`,
+          line:{color:colors[idx].value, width:lineWidth},
+          marker:{size:4}
         });
+
+        // 分布图：根据模式决定
+        const nbins=parseInt(document.getElementById("nbins").value||"40");
+
+        // 论文风格：只要 KDE，填充到零、线更粗、无 “(KDE)” 后缀
+        if(thesisMode && useKDE){
+          const gridPts=parseInt(document.getElementById("kdeGrid").value||"200");
+          const lo=Math.min(...yRaw), hi=Math.max(...yRaw);
+          const {x:gx, y:gy}=kdeGaussian(yRaw, lo, hi, gridPts);
+          distTraces.push({
+            x:gx, y:gy, type:"scatter", mode:"lines",
+            fill:"tozeroy",
+            fillcolor:hex2rgba(colors[idx].value, 0.25),
+            name:(names[idx].value||`Group ${idx+1}`),
+            line:{color:colors[idx].value, width:3}
+          });
+        }
+
+        // 普通模式：直方图 + 可选 KDE
+        if(!thesisMode){
+          distTraces.push({
+            x:yRaw, type:"histogram",
+            name:(names[idx].value||`Group ${idx+1}`)+" (hist)",
+            histnorm:"percent", nbinsx:nbins, opacity:0.25,
+            marker:{color:colors[idx].value},
+            hovertemplate:"%{y:.3f}% at %{x}<extra></extra>"
+          });
+
+          if(useKDE){
+            const gridPts=parseInt(document.getElementById("kdeGrid").value||"200");
+            const lo=Math.min(...yRaw), hi=Math.max(...yRaw);
+            const {x:gx, y:gy}=kdeGaussian(yRaw, lo, hi, gridPts);
+            distTraces.push({
+              x:gx, y:gy, type:"scatter", mode:"lines",
+              name:(names[idx].value||`Group ${idx+1}`)+" (KDE)",
+              line:{color:colors[idx].value, width:2}
+            });
+          }
+        }
 
         completed++;
-        if (completed === files.length) {
-          const statsDiv = document.getElementById("statsOutput");
-          statsDiv.innerHTML = window.sasaStats.map(stat =>
-            `<b>${stat.name}:</b> Mean: ${stat.mean} ${currentUnit}, SD: ${stat.sd} ${currentUnit}, Min: ${stat.min} ${currentUnit}, Max: ${stat.max} ${currentUnit}`
+        if(completed===totalSelected){
+          // 统计区
+          const statsDiv=document.getElementById("statsOutput");
+          statsDiv.innerHTML=window.sasaStats.map(s =>
+            `<b>${s.name}:</b> Mean: ${s.mean} ${currentUnit}, SD: ${s.sd} ${currentUnit}, Min: ${s.min} ${currentUnit}, Max: ${s.max} ${currentUnit}`
           ).join("<br>");
 
+          // 主图
           Plotly.newPlot("plot", traces, {
-            width: figW, height: figH,
-            xaxis: {
-              title: xLabel,
-              dtick: tickX,
-              showline: true,
-              mirror: true,
-              linecolor: '#e0e0e0',
-              linewidth: 1,
-              zeroline: true,
-              zerolinecolor: "#eee",
-              range: xrange.length === 2 && !isNaN(xrange[0]) && !isNaN(xrange[1]) ? xrange : undefined
-            },
-            yaxis: {
-              title: yLabel,
-              dtick: tickY,
-              showline: true,
-              mirror: true,
-              linecolor: '#e0e0e0',
-              linewidth: 1,
-              zeroline: true,
-              zerolinecolor: "#eee",
-              range: yrange.length === 2 ? yrange : undefined
-            },
-            margin: { t: 30 },
-            plot_bgcolor: "#fff",
-            paper_bgcolor: "#fff"
+            width:figW, height:figH,
+            xaxis:{title:xLabel, dtick:tickX, showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1, zeroline:true, zerolinecolor:"#eee",
+                   range:(xrange.length===2&&!isNaN(xrange[0])&&!isNaN(xrange[1]))?xrange:undefined},
+            yaxis:{title:yLabel, dtick:tickY, showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1, zeroline:true, zerolinecolor:"#eee",
+                   range:(yrange.length===2&&!isNaN(yrange[0])&&!isNaN(yrange[1]))?yrange:undefined},
+            legend:{orientation:"h"},
+            margin:{t:30}, plot_bgcolor:"#fff", paper_bgcolor:"#fff"
           });
+
+          // 分布图
+          const layoutDist = {
+            width:figW, height:figH,
+            barmode:"overlay",
+            xaxis:{title:`${yLabel}`, showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1},
+            yaxis:{title: thesisMode ? "Density (%)" : "Percentage (%)",
+                   showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1, rangemode:"tozero"},
+            legend:{orientation:"h"},
+            margin:{t:20}, plot_bgcolor:"#fff", paper_bgcolor:"#fff"
+          };
+
+          if(document.getElementById("showDist").checked){
+            Plotly.newPlot("distPlot", distTraces, layoutDist);
+          }else{
+            Plotly.purge("distPlot");
+          }
         }
       });
     });
+  }
+
+  async function exportBoth(){
+    const ts = new Date().toISOString().replace(/[:.]/g,"-");
+    const p1 = Plotly.toImage("plot",{format:"png",height:600,width:1700,scale:2})
+      .then(dataUrl=>downloadDataURL(dataUrl, `SASA_timeseries_${ts}.png`))
+      .catch(()=>{});
+    const p2 = Plotly.toImage("distPlot",{format:"png",height:600,width:1700,scale:2})
+      .then(dataUrl=>downloadDataURL(dataUrl, `SASA_distribution_${ts}.png`))
+      .catch(()=>{});
+    await Promise.all([p1,p2]);
+  }
+  function downloadDataURL(dataUrl, filename){
+    const a=document.createElement("a");
+    a.href=dataUrl; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
   }
 </script>
 </body>
