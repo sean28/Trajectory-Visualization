@@ -39,6 +39,7 @@
     <button type="button" onclick="addFileInput()">➕ Add Group</button>
     <button onclick="drawPlot()">Generate Plot</button>
     <button onclick="exportBoth()">Export Both PNG</button>
+    <!--- <button onclick="exportBoth()">Export Both PNG</button> --->
   </div>
 
   <div class="row">
@@ -77,6 +78,10 @@
   <div class="form-group">
     <label for="figSize">Figure Size (width,height):</label>
     <input type="text" id="figSize" value="1000,350">
+  </div>
+  <div class="form-group">
+    <label for="fontSize">Font size (pt):</label>
+    <input type="number" id="fontSize" value="15" min="8" max="48" step="1">
   </div>
 
   <div class="form-group" style="display:flex;gap:1.2rem;align-items:center;flex-wrap:wrap">
@@ -246,6 +251,9 @@
     const tickX=parseFloat(document.getElementById("tickX").value);
     const tickY=parseFloat(document.getElementById("tickY").value);
     const [figW,figH]=document.getElementById("figSize").value.split(",").map(Number);
+    const fontSize = parseInt(document.getElementById("fontSize").value || "18", 10);
+    const axisFont = Math.max(8, fontSize - 2);
+    const legendFont = Math.max(8, fontSize - 2);
     const xrange=document.getElementById("xrange").value.split(",").map(Number);
     const yrange=document.getElementById("yrange").value.split(",").map(Number);
 
@@ -346,24 +354,48 @@
 
           // 主图
           Plotly.newPlot("plot", traces, {
-            width:figW, height:figH,
-            xaxis:{title:xLabel, dtick:tickX, showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1, zeroline:true, zerolinecolor:"#eee",
-                   range:(xrange.length===2&&!isNaN(xrange[0])&&!isNaN(xrange[1]))?xrange:undefined},
-            yaxis:{title:yLabel, dtick:tickY, showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1, zeroline:true, zerolinecolor:"#eee",
-                   range:(yrange.length===2&&!isNaN(yrange[0])&&!isNaN(yrange[1]))?yrange:undefined},
-            legend:{orientation:"h"},
-            margin:{t:30}, plot_bgcolor:"#fff", paper_bgcolor:"#fff"
+            width: figW, height: figH,
+            font: { size: fontSize },                // 全局字体
+            xaxis: {
+              title: xLabel,
+              titlefont: { size: fontSize },         // 轴标题
+              tickfont: { size: axisFont },          // 刻度字体
+              dtick: tickX, showline: true, mirror: true, linecolor: "#e0e0e0", linewidth: 1,
+              zeroline: true, zerolinecolor: "#eee",
+              range: (xrange.length === 2 && !isNaN(xrange[0]) && !isNaN(xrange[1])) ? xrange : undefined
+            },
+            yaxis: {
+              title: yLabel,
+              titlefont: { size: fontSize },
+              tickfont: { size: axisFont },
+              dtick: tickY, showline: true, mirror: true, linecolor: "#e0e0e0", linewidth: 1,
+              zeroline: true, zerolinecolor: "#eee",
+              range: (yrange.length === 2 && !isNaN(yrange[0]) && !isNaN(yrange[1])) ? yrange : undefined
+            },
+            legend: { orientation: "h", font: { size: legendFont } },
+            margin: { t: 30 }, plot_bgcolor: "#fff", paper_bgcolor: "#fff"
           });
 
           // 分布图
           const layoutDist = {
-            width:figW, height:figH,
-            barmode:"overlay",
-            xaxis:{title:`${yLabel}`, showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1},
-            yaxis:{title: thesisMode ? "Density (%)" : "Percentage (%)",
-                   showline:true, mirror:true, linecolor:"#e0e0e0", linewidth:1, rangemode:"tozero"},
-            legend:{orientation:"h"},
-            margin:{t:20}, plot_bgcolor:"#fff", paper_bgcolor:"#fff"
+            width: figW, height: figH,
+            font: { size: fontSize },
+            barmode: "overlay",
+            xaxis: {
+              title: "ASA (nm²)",
+              titlefont: { size: fontSize },
+              tickfont: { size: axisFont },
+              showline: true, mirror: true, linecolor: "#e0e0e0", linewidth: 1
+            },
+            yaxis: {
+              title: thesisMode ? "Percentage (%)" : "Percentage (%)",
+              titlefont: { size: fontSize },
+              tickfont: { size: axisFont },
+              showline: true, mirror: true, linecolor: "#e0e0e0", linewidth: 1,
+              rangemode: "tozero"
+            },
+            legend: { orientation: "h", font: { size: legendFont } },
+            margin: { t: 20 }, plot_bgcolor: "#fff", paper_bgcolor: "#fff"
           };
 
           if(document.getElementById("showDist").checked){
@@ -375,17 +407,36 @@
       });
     });
   }
-
-  async function exportBoth(){
-    const ts = new Date().toISOString().replace(/[:.]/g,"-");
-    const p1 = Plotly.toImage("plot",{format:"png",height:600,width:1700,scale:2})
-      .then(dataUrl=>downloadDataURL(dataUrl, `SASA_timeseries_${ts}.png`))
-      .catch(()=>{});
-    const p2 = Plotly.toImage("distPlot",{format:"png",height:600,width:1700,scale:2})
-      .then(dataUrl=>downloadDataURL(dataUrl, `SASA_distribution_${ts}.png`))
-      .catch(()=>{});
-    await Promise.all([p1,p2]);
-  }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  async function exportOne(divId, filename) {
+      const div = document.getElementById(divId);
+      if (!div || !div.data || !div.data.length) return false;
+      // 用真实 DOM 节点；有的浏览器传字符串会不稳定
+      const dataUrl = await Plotly.toImage(div, { format: "png", height: 600, width: 1700, scale: 3 });
+      triggerDownload(dataUrl, filename);
+      // 给浏览器一次下载的“喘息时间”，避免第二次被拦截
+      await sleep(250);
+      return true;
+    }
+  async function exportBoth() {
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      // 先导出上面的时间序列
+      await exportOne("plot", `SASA_timeseries_${ts}.png`);
+      // 再导出下面的分布图（若未勾选 Show Distribution 会自动跳过）
+      await exportOne("distPlot", `SASA_distribution_${ts}.png`);
+    }
+  function triggerDownload(dataUrl, filename) {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      // 用 requestAnimationFrame 确保第一次 click 真正发生
+      requestAnimationFrame(() => {
+        a.click();
+        // 再给一次机会，兼容部分浏览器
+        setTimeout(() => { a.click(); document.body.removeChild(a); }, 0);
+      });
+    }
   function downloadDataURL(dataUrl, filename){
     const a=document.createElement("a");
     a.href=dataUrl; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
