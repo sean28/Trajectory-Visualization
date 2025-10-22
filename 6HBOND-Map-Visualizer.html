@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HBond Map Visualizer</title>
+<script src="./plotly-latest.min.js"></script>
+<style>
+body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:24px;}
+.container{max-width:1150px;margin:0 auto;background:#fff;padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);}
+h2{text-align:center;margin:0 0 10px 0;}
+.file-row{display:flex;align-items:center;gap:.5rem;margin:.4rem 0;flex-wrap:wrap}
+button{padding:.55rem 1rem;border:none;background:#2563eb;color:white;border-radius:9px;cursor:pointer}
+button:hover{background:#1d4ed8}
+#plot{margin-top:10px}
+#stats{font-family:monospace;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="container">
+<h2>HBond Map Visualizer</h2>
+<div class="file-row">
+<input type="file" id="file" accept=".xpm">
+<button onclick="draw()">Plot</button>
+<button onclick="downloadPNG()">Download PNG</button>
+</div>
+<div id="plot"></div>
+<div id="stats"></div>
+</div>
+<script>
+async function draw(){
+ const f=document.getElementById('file').files[0];
+ if(!f){alert('Select .xpm');return;}
+ const txt=await f.text();
+ const lines=txt.split(/\n/);
+ let width=0,height=0,ncolors=0,cpp=1;
+ for(const l of lines){const m=l.match(/"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"/);if(m){width=+m[1];height=+m[2];ncolors=+m[3];cpp=+m[4];break;}}
+ const values=new Map();let idx=0;
+ for(const l of lines){const m=l.match(/^"(.{1,2})\s+c\s+([^"]+)/);if(m){values.set(m[1],idx++);if(values.size===ncolors)break;}}
+ const rows=[];for(const l of lines){const m=l.match(/^"(.+)"\s*,?$/);if(m&&m[1].length===width*cpp)rows.push(m[1]);if(rows.length===height)break;}
+ const Z=rows.map(r=>Array.from({length:width},(_,c)=>values.get(r.substr(c*cpp,cpp))||0));
+ Plotly.newPlot('plot',[{z:Z,type:'heatmap',colorscale:'Viridis',zsmooth:false}],{xaxis:{title:'Frame'},yaxis:{title:'Bond index',autorange:'reversed'}},{displaylogo:false,responsive:true});
+ document.getElementById('stats').textContent=`Matrix: ${width}x${height}, colors=${ncolors}`;
+}
+function downloadPNG(){Plotly.downloadImage('plot',{format:'png',filename:'hbmap_plot'});}
+</script>
+</body>
+</html>

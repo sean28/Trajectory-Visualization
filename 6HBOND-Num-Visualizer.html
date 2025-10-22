@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HBond Count Visualizer</title>
+<script src="./plotly-latest.min.js"></script>
+<style>
+body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:24px;}
+.container{max-width:1150px;margin:0 auto;background:#fff;padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);}
+h2{text-align:center;margin:0 0 12px 0;}
+.form-group{margin:10px 0;}
+label{display:block;margin-bottom:6px;font-weight:600;}
+.row{display:flex;gap:1rem;flex-wrap:wrap;align-items:center}
+input[type="text"],input[type="number"],select{padding:.5rem;border:1px solid #e2e8f0;border-radius:8px;font-size:14px}
+button{padding:.55rem 1rem;border:none;background:#2563eb;color:white;border-radius:9px;cursor:pointer}
+button:hover{background:#1d4ed8}
+.file-group{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+#plot{margin-top:10px}
+#stats{font-family:monospace;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;white-space:pre-wrap}
+.small{font-size:12px;color:#64748b}
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>HBond Count Visualizer</h2>
+
+  <div class="form-group">
+    <label>Upload .xvg Files (Multiple Groups):</label>
+    <div id="fileInputs">
+      <div class="file-group">
+        <label style="min-width:68px">Group 1:</label>
+        <input type="file" class="xvgFile" accept=".xvg">
+        <label>Line Color:</label>
+        <input type="color" class="colorPicker" value="#1f77b4">
+        <label>Group name:</label>
+        <input type="text" class="groupName" placeholder="HBond Set 1" style="flex:1;">
+        <button onclick="removeGroup(this)" title="Remove group" style="padding:.2rem .6rem">×</button>
+      </div>
+    </div>
+    <div class="row">
+      <button type="button" onclick="addFileInput()">➕ Add Group</button>
+      <button onclick="drawPlot()">Generate Plot</button>
+      <button onclick="downloadPNG()">Download PNG</button>
+    </div>
+    <div class="small">提示：从 .xvg 头部自动识别时间单位（如 Time (ps/ns)）。也可手动覆盖显示单位。</div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div>
+        <label for="xlabel">X-axis Label</label>
+        <input type="text" id="xlabel" value="Time">
+      </div>
+      <div>
+        <label for="timeUnit">Display Time Unit</label>
+        <select id="timeUnit">
+          <option value="auto" selected>Auto (from file)</option>
+          <option value="fs">fs</option>
+          <option value="ps">ps</option>
+          <option value="ns">ns</option>
+          <option value="us">µs</option>
+          <option value="ms">ms</option>
+          <option value="s">s</option>
+        </select>
+      </div>
+      <div>
+        <label for="ylabel">Y-axis Label</label>
+        <input type="text" id="ylabel" value="# H-bonds">
+      </div>
+      <div>
+        <label for="figSize">Figure Size (width,height)</label>
+        <input type="text" id="figSize" value="1000,380">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div>
+        <label for="tickX">X-axis Tick Spacing</label>
+        <input type="number" id="tickX" value="10" step="1" min="0">
+      </div>
+      <div>
+        <label for="tickY">Y-axis Tick Spacing</label>
+        <input type="number" id="tickY" value="1" step="0.5" min="0">
+      </div>
+      <div>
+        <label for="xrange">X-axis Range (min,max)</label>
+        <input type="text" id="xrange" placeholder="e.g. 0,200">
+      </div>
+      <div>
+        <label for="yrange">Y-axis Range (min,max)</label>
+        <input type="text" id="yrange" placeholder="e.g. 0,20">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <div class="row">
+      <div>
+        <label for="lineWidth">Line Width</label>
+        <input type="number" id="lineWidth" value="2" step="0.5" min="0.5" style="width:90px">
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-top:24px">
+        <label><input type="checkbox" id="showMarkers"> Show Markers</label>
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-top:24px">
+        <label><input type="checkbox" id="enableSmooth"> Smooth</label>
+        <input type="number" id="smoothWin" value="5" min="2" step="1" style="width:70px">
+      </div>
+    </div>
+  </div>
+
+  <div id="plot"></div>
+
+  <div class="form-group">
+    <label>Statistics</label>
+    <div id="stats"></div>
+  </div>
+</div>
+
+<script>
+let groupCount=1;
+const palette=["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+
+// ---- UI helpers ----
+function addFileInput(){
+  groupCount++;
+  const container=document.getElementById("fileInputs");
+  const div=document.createElement("div");
+  div.className="file-group";
+  const color=palette[(groupCount-1)%palette.length];
+  div.innerHTML=`
+    <label style="min-width:68px">Group ${groupCount}:</label>
+    <input type="file" class="xvgFile" accept=".xvg">
+    <label>Line Color:</label>
+    <input type="color" class="colorPicker" value="${color}">
+    <label>Group name:</label>
+    <input type="text" class="groupName" placeholder="HBond Set ${groupCount}" style="flex:1;">
+    <button onclick="removeGroup(this)" title="Remove group" style="padding:.2rem .6rem">×</button>
+  `;
+  container.appendChild(div);
+}
+function removeGroup(btn){
+  btn.parentNode.remove();
+  resetGroupLabels();
+}
+function resetGroupLabels(){
+  const groups=document.querySelectorAll(".file-group");
+  groupCount=0;
+  groups.forEach((g,idx)=>{
+    const label=g.querySelector("label");
+    const name=g.querySelector(".groupName");
+    const color=g.querySelector(".colorPicker");
+    groupCount=idx+1;
+    label.textContent=`Group ${groupCount}:`;
+    if(!name.value) name.placeholder=`HBond Set ${groupCount}`;
+    color.value=palette[idx%palette.length];
+  });
+}
+
+// ---- XVG parsing & unit detection ----
+function detectTimeUnitFromHeader(txt){
+  // Try strict xaxis label first
+  let m = txt.match(/xaxis\s+label\s+"[^"]*?\(\s*(fs|ps|ns|u?s|ms|s)\s*\)"/i);
+  if (m) return normalizeUnit(m[1]);
+  // Fallback: any "Time (unit)"
+  m = txt.match(/Time\s*\(\s*(fs|ps|ns|u?s|ms|s)\s*\)/i);
+  if (m) return normalizeUnit(m[1]);
+  // Default to ps if not specified (typical for GROMACS)
+  return 'ps';
+}
+function normalizeUnit(u){
+  u = (u||'').toLowerCase();
+  if(u==='µs') return 'us';
+  return u;
+}
+function unitFactor(from,to){
+  // map to picoseconds scale
+  const psScale={fs:1e-3, ps:1, ns:1e3, us:1e6, ms:1e9, s:1e12};
+  from = normalizeUnit(from); to = normalizeUnit(to);
+  if(!psScale[from] || !psScale[to]) return 1;
+  return psScale[from]/psScale[to]; // multiply x by this factor
+}
+
+function parseXVGFile(file){
+  return new Promise((resolve)=>{
+    if(!file) return resolve(null);
+    file.text().then(txt=>{
+      const unit = detectTimeUnitFromHeader(txt); // source unit from header
+      const xs=[], ys=[];
+      for(const raw of txt.split(/\n/)){
+        const l=raw.trim();
+        if(!l || l.startsWith("#") || l.startsWith("@")) continue;
+        const p=l.split(/\s+/);
+        if(p.length>=2){
+          const x=Number(p[0]), y=Number(p[1]);
+          if(!Number.isNaN(x) && !Number.isNaN(y)){ xs.push(x); ys.push(y); }
+        }
+      }
+      resolve({x:xs,y:ys,unit});
+    }).catch(()=>resolve(null));
+  });
+}
+
+// ---- math helpers ----
+function movingAverage(arr,win){
+  if(!Array.isArray(arr)||arr.length===0||win<=1) return arr.slice();
+  const out=[]; let sum=0;
+  for(let i=0;i<arr.length;i++){
+    sum+=arr[i];
+    if(i>=win) sum-=arr[i-win];
+    out.push(i>=win-1?sum/win:arr[i]);
+  }
+  return out;
+}
+
+// ---- draw plot ----
+function drawPlot(){
+  const fileInputs=[...document.querySelectorAll(".xvgFile")];
+  const colors=[...document.querySelectorAll(".colorPicker")];
+  const names=[...document.querySelectorAll(".groupName")];
+
+  const displayChoice=document.getElementById("timeUnit").value; // 'auto' or unit
+  const xLabelBase=(document.getElementById("xlabel").value||"Time").trim();
+  const yLabel=document.getElementById("ylabel").value||"# H-bonds";
+  const tickX=parseFloat(document.getElementById("tickX").value);
+  const tickY=parseFloat(document.getElementById("tickY").value);
+  const xrangeTxt=document.getElementById("xrange").value.trim();
+  const yrangeTxt=document.getElementById("yrange").value.trim();
+  const [figW,figH]=(document.getElementById("figSize").value||"1000,380").split(",").map(n=>parseInt(n.trim(),10));
+  const enableSmooth=document.getElementById("enableSmooth").checked;
+  const smoothWin=parseInt(document.getElementById("smoothWin").value||"5");
+  const showMarkers=document.getElementById("showMarkers").checked;
+  const lineWidth=parseFloat(document.getElementById("lineWidth").value)||2;
+
+  const xrange=(()=>{
+    if(!xrangeTxt) return undefined;
+    const a=xrangeTxt.split(",").map(Number);
+    return (a.length===2&&a.every(v=>!Number.isNaN(v)))?a:undefined;
+  })();
+  const yrange=(()=>{
+    if(!yrangeTxt) return undefined;
+    const a=yrangeTxt.split(",").map(Number);
+    return (a.length===2&&a.every(v=>!Number.isNaN(v)))?a:undefined;
+  })();
+
+  Promise.all(fileInputs.map(inp=>parseXVGFile(inp.files?.[0]))).then(results=>{
+    // Determine display unit (auto: use first detected; else use selection)
+    let displayUnit = displayChoice;
+    if(displayUnit==='auto'){
+      const first = results.find(r=>r && r.unit);
+      displayUnit = first ? first.unit : 'ps';
+    }
+    const xLabel = `${xLabelBase} (${displayUnit})`;
+
+    const traces=[]; const stats=[];
+    results.forEach((dat,idx)=>{
+      if(!dat) return;
+      const factor=unitFactor(dat.unit, displayUnit);
+      const x=dat.x.map(v=>v*factor);
+      const yRaw=dat.y.slice();
+      const yPlot=enableSmooth?movingAverage(yRaw,Math.max(2,smoothWin)):yRaw;
+
+      const n=yRaw.length||1;
+      const mean=yRaw.reduce((a,b)=>a+b,0)/n;
+      const sd=Math.sqrt(yRaw.reduce((a,b)=>a+(b-mean)**2,0)/n);
+      const min=Math.min(...yRaw);
+      const max=Math.max(...yRaw);
+
+      stats.push(`${names[idx].value||`Group ${idx+1}`} | src=${dat.unit} → disp=${displayUnit} | mean=${mean.toFixed(3)}, sd=${sd.toFixed(3)}, min=${min.toFixed(3)}, max=${max.toFixed(3)} (${n} pts)`);
+
+      traces.push({
+        x, y:yPlot,
+        type:"scatter",
+        mode:showMarkers?"lines+markers":"lines",
+        name:names[idx].value||`Group ${idx+1}`,
+        line:{color:colors[idx].value,width:lineWidth},
+        marker:{size:4}
+      });
+    });
+
+    const gd=document.getElementById("plot");
+    Plotly.newPlot(gd,traces,{
+      width:isNaN(figW)?1000:figW,
+      height:isNaN(figH)?380:figH,
+      xaxis:{title:xLabel,dtick:isNaN(tickX)?undefined:tickX,showline:true,mirror:true,linecolor:'#e0e0e0',linewidth:1,zeroline:true,zerolinecolor:"#eee",range:xrange},
+      yaxis:{title:yLabel,dtick:isNaN(tickY)?undefined:tickY,showline:true,mirror:true,linecolor:'#e0e0e0',linewidth:1,zeroline:true,zerolinecolor:"#eee",range:yrange},
+      margin:{t:30},plot_bgcolor:"#fff",paper_bgcolor:"#fff"},
+      {displaylogo:false,responsive:true}
+    );
+    document.getElementById("stats").textContent=stats.join("\n")||"—";
+  });
+}
+
+function downloadPNG(){
+  const gd=document.getElementById("plot");
+  Plotly.downloadImage(gd,{format:"png",filename:"HBond-Num-plot"});
+}
+</script>
+</body>
+</html>

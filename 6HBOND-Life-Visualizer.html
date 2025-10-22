@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HBond Lifetime Visualizer</title>
+<script src="./plotly-latest.min.js"></script>
+<style>
+body{font-family:Arial, sans-serif;background:#f5f6fa;margin:0;padding:24px;}
+.container{max-width:1150px;margin:0 auto;background:#fff;padding:20px;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);}
+h2{text-align:center;margin:0 0 10px 0;}
+label{display:block;margin-bottom:6px;font-weight:600;}
+.row{display:flex;gap:1rem;flex-wrap:wrap;align-items:center}
+input[type="text"],input[type="number"],select{padding:.5rem;border:1px solid #e2e8f0;border-radius:8px;font-size:14px}
+button{padding:.55rem 1rem;border:none;background:#2563eb;color:white;border-radius:9px;cursor:pointer}
+button:hover{background:#1d4ed8}
+.file-group{display:flex;align-items:center;gap:.5rem;margin:.4rem 0;flex-wrap:wrap}
+#plot{margin-top:10px}
+#stats{font-family:monospace;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;white-space:pre-wrap}
+.small{font-size:12px;color:#64748b}
+.warn{font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;padding:6px 10px;display:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>HBond Lifetime Visualizer</h2>
+
+  <div class="row">
+    <div style="flex:1 1 100%">
+      <label>Upload .xvg Files (Multiple Groups):</label>
+      <div id="fileInputs">
+        <div class="file-group">
+          <label style="min-width:70px">Group 1:</label>
+          <input type="file" class="xvgFile" accept=".xvg">
+          <label>Color</label><input type="color" class="colorPicker" value="#1f77b4">
+          <label>Name</label><input type="text" class="groupName" placeholder="HBond Life 1" style="flex:1;">
+          <label><input type="checkbox" class="fillArea"> Fill</label>
+          <label>α</label><input type="number" class="fillAlpha" value="0.15" step="0.05" min="0" max="0.9" style="width:80px">
+          <button onclick="removeGroup(this)" title="Remove" style="padding:.2rem .6rem">×</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:.4rem">
+        <button type="button" onclick="addFileInput()">➕ Add Group</button>
+        <button onclick="draw()">Plot</button>
+        <button onclick="downloadPNG()">Download PNG</button>
+      </div>
+      <div id="msg" class="warn" style="margin-top:.4rem">PDF 需要可辨识的等宽 bin；未检测到等宽，已自动退回 Fraction。</div>
+      <div class="small">提示：自动从 .xvg 头部识别时间单位（如 <code>Time (ps|ns|...)</code> / <code>lifetime (ps|ns|...)</code>），并统一到下方的 Display Unit。</div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:.8rem">
+    <div><label for="xlabel">X-axis Label</label><input id="xlabel" value="Lifetime"></div>
+    <div><label for="timeUnit">Display Time Unit</label>
+      <select id="timeUnit">
+        <option value="auto" selected>Auto (from first)</option>
+        <option value="fs">fs</option><option value="ps">ps</option><option value="ns">ns</option>
+        <option value="us">µs</option><option value="ms">ms</option><option value="s">s</option>
+      </select>
+    </div>
+    <div><label for="ylabel">Y-axis Label</label><input id="ylabel" value="Count"></div>
+    <div><label for="yMode">Y Mode</label>
+      <select id="yMode">
+        <option value="count" selected>Count</option>
+        <option value="fraction">Fraction (0–1)</option>
+        <option value="cdf">CDF (0–1)</option>
+        <option value="pdf">PDF (density)</option>
+      </select>
+    </div>
+    <div><label for="figSize">Figure Size (w,h)</label><input id="figSize" value="1000,380"></div>
+  </div>
+
+  <div class="row">
+    <div><label for="tickX">X Tick</label><input type="number" id="tickX" value="10" step="1" min="0"></div>
+    <div><label for="tickY">Y Tick</label><input type="number" id="tickY" value="1" step="0.5" min="0"></div>
+    <div><label for="xrange">X Range (min,max)</label><input id="xrange" placeholder="e.g. 0,200"></div>
+    <div><label for="yrange">Y Range (min,max)</label><input id="yrange" placeholder="e.g. 0,1"></div>
+  </div>
+
+  <div class="row">
+    <div><label for="lineWidth">Line Width</label><input type="number" id="lineWidth" value="2" step="0.5" min="0.5" style="width:90px"></div>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-top:24px"><label><input type="checkbox" id="showMarkers"> Show Markers</label></div>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-top:24px"><label><input type="checkbox" id="enableSmooth"> Smooth</label><input type="number" id="smoothWin" value="3" min="2" step="1" style="width:70px"></div>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-top:24px"><label><input type="checkbox" id="logY"> Log Y</label></div>
+  </div>
+
+  <div id="plot"></div>
+  <div class="row"><div style="flex:1">
+    <label>Statistics</label>
+    <div id="stats"></div>
+  </div></div>
+</div>
+
+<script>
+let groupCount=1;
+const palette=["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+
+function addFileInput(){
+  groupCount++;
+  const container=document.getElementById("fileInputs");
+  const div=document.createElement("div");
+  div.className="file-group";
+  const color=palette[(groupCount-1)%palette.length];
+  div.innerHTML=`
+    <label style="min-width:70px">Group ${groupCount}:</label>
+    <input type="file" class="xvgFile" accept=".xvg">
+    <label>Color</label><input type="color" class="colorPicker" value="${color}">
+    <label>Name</label><input type="text" class="groupName" placeholder="HBond Life ${groupCount}" style="flex:1;">
+    <label><input type="checkbox" class="fillArea"> Fill</label>
+    <label>α</label><input type="number" class="fillAlpha" value="0.15" step="0.05" min="0" max="0.9" style="width:80px">
+    <button onclick="removeGroup(this)" title="Remove" style="padding:.2rem .6rem">×</button>
+  `;
+  container.appendChild(div);
+}
+function removeGroup(btn){ btn.parentNode.remove(); resetGroupLabels(); }
+function resetGroupLabels(){
+  const groups=document.querySelectorAll(".file-group");
+  groupCount=0;
+  groups.forEach((g,idx)=>{
+    const label=g.querySelector("label");
+    const name=g.querySelector(".groupName");
+    const color=g.querySelector(".colorPicker");
+    groupCount=idx+1; label.textContent=`Group ${groupCount}:`;
+    if(!name.value) name.placeholder=`HBond Life ${groupCount}`;
+    color.value=palette[idx%palette.length];
+  });
+}
+
+// -------- Units ----------
+function normalizeUnit(u){ u=(u||'').toLowerCase(); if(u==='µs') return 'us'; return u; }
+function detectTimeUnitFromHeader(txt){
+  let m = txt.match(/xaxis\s+label\s+"[^"]*?\(\s*(fs|ps|ns|u?s|ms|s)\s*\)"/i);
+  if(m) return normalizeUnit(m[1]);
+  m = txt.match(/(time|lifetime)\s*\(\s*(fs|ps|ns|u?s|ms|s)\s*\)/i);
+  if(m) return normalizeUnit(m[2]);
+  return 'ps'; // GROMACS 常见默认
+}
+function unitFactor(from,to){
+  const psScale={fs:1e-3, ps:1, ns:1e3, us:1e6, ms:1e9, s:1e12};
+  from=normalizeUnit(from); to=normalizeUnit(to);
+  if(!psScale[from]||!psScale[to]) return 1;
+  return psScale[from]/psScale[to]; // multiply x by this factor
+}
+
+// -------- Parsing ----------
+function parseXVGFile(file){
+  return new Promise((resolve)=>{
+    if(!file) return resolve(null);
+    file.text().then(txt=>{
+      const srcUnit = detectTimeUnitFromHeader(txt);
+      const xs=[], ys=[];
+      for(const raw of txt.split(/\n/)){
+        const l=raw.trim();
+        if(!l || l.startsWith("#") || l.startsWith("@")) continue;
+        const p=l.split(/\s+/);
+        if(p.length>=2){
+          const x=Number(p[0]), y=Number(p[1]);
+          if(!Number.isNaN(x) && !Number.isNaN(y)){ xs.push(x); ys.push(y); }
+        }
+      }
+      // 估计等宽 bin 宽度（用中位数更稳健）
+      let dx=null;
+      if(xs.length>=3){
+        const diffs=[];
+        for(let i=1;i<xs.length;i++){
+          const d=xs[i]-xs[i-1]; if(Number.isFinite(d)) diffs.push(d);
+        }
+        if(diffs.length){
+          diffs.sort((a,b)=>a-b);
+          dx = diffs[Math.floor(diffs.length/2)];
+        }
+      }
+      resolve({x:xs,y:ys,unit:srcUnit,dx});
+    }).catch(()=>resolve(null));
+  });
+}
+
+// -------- Math helpers ----------
+function movingAverage(arr,win){
+  if(!Array.isArray(arr)||arr.length===0||win<=1) return arr.slice();
+  const out=[]; let sum=0;
+  for(let i=0;i<arr.length;i++){
+    sum+=arr[i]; if(i>=win) sum-=arr[i-win];
+    out.push(i>=win-1?sum/win:arr[i]);
+  }
+  return out;
+}
+function hexToRgba(hex,a){
+  const m=hex.replace('#',''); const bigint=parseInt(m,16);
+  const r=(bigint>>16)&255,g=(bigint>>8)&255,b=bigint&255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// -------- Plot ----------
+async function draw(){
+  const fileInputs=[...document.querySelectorAll(".xvgFile")];
+  const colors=[...document.querySelectorAll(".colorPicker")];
+  const names=[...document.querySelectorAll(".groupName")];
+  const fills=[...document.querySelectorAll(".fillArea")];
+  const fillAlphas=[...document.querySelectorAll(".fillAlpha")];
+
+  const yMode=document.getElementById("yMode").value; // count|fraction|cdf|pdf
+  const dispChoice=document.getElementById("timeUnit").value; // auto|unit
+  const xBase=(document.getElementById("xlabel").value||"Lifetime").trim();
+  const tickX=parseFloat(document.getElementById("tickX").value);
+  const tickY=parseFloat(document.getElementById("tickY").value);
+  const xrangeTxt=document.getElementById("xrange").value.trim();
+  const yrangeTxt=document.getElementById("yrange").value.trim();
+  const [figW,figH]=(document.getElementById("figSize").value||"1000,380").split(",").map(v=>parseInt(v.trim(),10));
+  const enableSmooth=document.getElementById("enableSmooth").checked;
+  const smoothWin=parseInt(document.getElementById("smoothWin").value||"3");
+  const showMarkers=document.getElementById("showMarkers").checked;
+  const lineWidth=parseFloat(document.getElementById("lineWidth").value)||2;
+  const logY=document.getElementById("logY").checked;
+
+  const xrange=(()=>{
+    if(!xrangeTxt) return undefined;
+    const a=xrangeTxt.split(",").map(Number);
+    return (a.length===2&&a.every(v=>!Number.isNaN(v)))?a:undefined;
+  })();
+  const yrange=(()=>{
+    if(!yrangeTxt) return undefined;
+    const a=yrangeTxt.split(",").map(Number);
+    return (a.length===2&&a.every(v=>!Number.isNaN(v)))?a:undefined;
+  })();
+
+  const results = await Promise.all(fileInputs.map(inp=>parseXVGFile(inp.files?.[0])));
+  if(results.every(r=>!r)){ alert("Please select at least one .xvg file."); return; }
+
+  // 选定显示单位
+  let dispUnit = dispChoice;
+  if(dispUnit==='auto'){
+    const first=results.find(r=>r&&r.unit);
+    dispUnit = first ? first.unit : 'ps';
+  }
+  const xLabel = `${xBase} (${dispUnit})`;
+
+  // 生成曲线与统计
+  const traces=[]; const stats=[];
+  let pdfFallback=false;
+
+  results.forEach((dat,idx)=>{
+    if(!dat) return;
+    const factor=unitFactor(dat.unit,dispUnit);
+    const x=dat.x.map(v=>v*factor);
+    const dx=(dat.dx!=null)?dat.dx*factor:null;
+
+    const yRaw=dat.y.slice();
+    const total=yRaw.reduce((a,b)=>a+b,0)||1;
+
+    let yPlot;
+    let yLabel = document.getElementById("ylabel").value || "Count";
+
+    if(yMode==='count'){ yPlot=yRaw; yLabel = "Count"; }
+    else if(yMode==='fraction'){ yPlot=yRaw.map(v=>v/total); yLabel = "Fraction"; }
+    else if(yMode==='cdf'){
+      let acc=0; yPlot=yRaw.map(v=>{acc+=v; return acc/total;}); yLabel="CDF";
+    } else if(yMode==='pdf'){
+      if(dx && dx>0){
+        yPlot=yRaw.map(v=>v/(total*dx)); yLabel=`PDF (1/${dispUnit})`;
+      }else{
+        // 无等宽bin，退回 Fraction
+        pdfFallback=true;
+        yPlot=yRaw.map(v=>v/total); yLabel="Fraction (fallback)";
+      }
+    }
+
+    const ySm = enableSmooth ? movingAverage(yPlot,Math.max(2,smoothWin)) : yPlot;
+
+    // 统计：均值/方差/中位/众数（基于原始 count）
+    const mean = (yRaw.reduce((s,yi,i)=>s + x[i]*yi,0)/total);
+    const var_ = (yRaw.reduce((s,yi,i)=>s + yi*(x[i]-mean)**2,0)/total);
+    const sd = Math.sqrt(var_);
+    const modeIdx = yRaw.indexOf(Math.max(...yRaw));
+    const mode = x[modeIdx];
+
+    // 近似中位数
+    let cum = 0, median = x[0];
+    for(let i=0;i<yRaw.length;i++){ cum += yRaw[i]; if(cum >= total/2){ median = x[i]; break; } }
+
+    const name = names[idx].value || `Group ${idx+1}`;
+    stats.push(`${name} | src=${dat.unit} → disp=${dispUnit} | bins=${yRaw.length}, dx≈${dx?dx.toFixed(4):"NA"} ${dx?dispUnit:""} | total=${total} | mean=${mean.toFixed(4)} ${dispUnit}, sd=${sd.toFixed(4)} ${dispUnit}, median≈${median.toFixed(4)} ${dispUnit}, mode≈${mode.toFixed(4)} ${dispUnit}`);
+
+    const color = colors[idx].value;
+    const fillOn = fills[idx].checked;
+    const alpha = Math.max(0, Math.min(0.9, parseFloat(fillAlphas[idx].value) || 0.15));
+
+    const trace = {
+      x, y: ySm,
+      type: "scatter",
+      mode: showMarkers ? "lines+markers" : "lines",
+      name,
+      line: { color, width: lineWidth },
+      marker: { size: 4 }
+    };
+    if(fillOn){
+      trace.fill = "tozeroy";
+      trace.fillcolor = hexToRgba(color, alpha);
+    }
+    traces.push(trace);
+
+    // 更新Y轴标签（以最后一次为准；如果你要锁死，可去掉这行）
+    document.getElementById("ylabel").value = yLabel;
+  });
+
+  // 警告条
+  const msg = document.getElementById("msg");
+  msg.style.display = (yMode==='pdf' && pdfFallback) ? 'block' : 'none';
+
+  Plotly.newPlot("plot", traces, {
+    width: isNaN(figW)?1000:figW,
+    height: isNaN(figH)?380:figH,
+    xaxis: {
+      title: xLabel,
+      dtick: isNaN(tickX)?undefined:tickX,
+      showline:true, mirror:true, linecolor:'#e0e0e0', linewidth:1,
+      zeroline:true, zerolinecolor:"#eee",
+      range: xrange
+    },
+    yaxis: {
+      title: document.getElementById("ylabel").value,
+      dtick: isNaN(tickY)?undefined:tickY,
+      type: logY ? 'log' : 'linear',
+      showline:true, mirror:true, linecolor:'#e0e0e0', linewidth:1,
+      zeroline:true, zerolinecolor:"#eee",
+      range: yrange
+    },
+    margin:{t:30}, plot_bgcolor:"#fff", paper_bgcolor:"#fff"
+  }, {displaylogo:false,responsive:true});
+
+  document.getElementById("stats").textContent = stats.join("\n") || "—";
+}
+
+function downloadPNG(){
+  const gd=document.getElementById("plot");
+  Plotly.downloadImage(gd,{format:"png",filename:"HBond-Lifetime-plot"});
+}
+</script>
+</body>
+</html>
